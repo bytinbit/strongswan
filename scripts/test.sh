@@ -65,7 +65,7 @@ build_wolfssl()
 
 build_tss2()
 {
-	TSS2_REV=2.3.1
+	TSS2_REV=2.3.3
 	TSS2_PKG=tpm2-tss-$TSS2_REV
 	TSS2_DIR=$DEPS_BUILD_DIR/$TSS2_PKG
 	TSS2_SRC=https://github.com/tpm2-software/tpm2-tss/releases/download/$TSS2_REV/$TSS2_PKG.tar.gz
@@ -433,6 +433,8 @@ sonarcloud)
 		-Dsonar.projectVersion=$(git describe)+${TRAVIS_BUILD_NUMBER} \
 		-Dsonar.sources=. \
 		-Dsonar.cfamily.threads=2 \
+		-Dsonar.cfamily.cache.enabled=true \
+		-Dsonar.cfamily.cache.path=$HOME/.sonar-cache \
 		-Dsonar.cfamily.build-wrapper-output=bw-output || exit $?
 	rm -r bw-output .scannerwork
 	;;
