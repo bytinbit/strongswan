@@ -52,6 +52,7 @@ enum tls_version_t {
 	TLS_1_0 = 0x0301,
 	TLS_1_1 = 0x0302,
 	TLS_1_2 = 0x0303,
+	TLS_1_3 = 0x0304,
 };
 
 /**
@@ -81,6 +82,11 @@ enum tls_handshake_type_t {
 	TLS_HELLO_REQUEST = 0,
 	TLS_CLIENT_HELLO = 1,
 	TLS_SERVER_HELLO = 2,
+	TLS_HELLO_VERIFY_REQUEST = 3,
+	TLS_NEW_SESSION_TICKET = 4,
+	TLS_END_OF_EARLY_DATA = 5,
+	TLS_HELLO_RETRY_REQUEST = 6,
+	TLS_ENCRYPTED_EXTENSIONS = 8,
 	TLS_CERTIFICATE = 11,
 	TLS_SERVER_KEY_EXCHANGE = 12,
 	TLS_CERTIFICATE_REQUEST = 13,
@@ -88,6 +94,11 @@ enum tls_handshake_type_t {
 	TLS_CERTIFICATE_VERIFY = 15,
 	TLS_CLIENT_KEY_EXCHANGE = 16,
 	TLS_FINISHED = 20,
+	TLS_CERTIFICATE_URL = 21,
+	TLS_CERTIFICATE_STATUS = 22,
+	TLS_SUPPLEMENTAL_DATA = 23,
+	TLS_KEY_UPDATE = 24,
+	TLS_MESSAGE_HASH = 254,
 };
 
 /**
@@ -114,7 +125,7 @@ enum tls_purpose_t {
 };
 
 /**
- * TLS Hello extension types.
+ * TLS Handshake extension types.
  */
 enum tls_extension_t {
 	/** Server name the client wants to talk to */
@@ -135,6 +146,26 @@ enum tls_extension_t {
 	TLS_EXT_EC_POINT_FORMATS = 11,
 	/** list supported signature algorithms */
 	TLS_EXT_SIGNATURE_ALGORITHMS = 13,
+	/** negotiate identity of the psk **/
+	TLS_EXT_PRE_SHARED_KEY = 41,
+	/** send data in 0-RTT when psk is used and early data is allowed **/
+	TLS_EXT_EARLY_DATA = 42,
+	/** negotiate supported tls versions **/
+	TLS_EXT_SUPPORTED_VERSIONS = 43,
+	/** identify client **/
+	TLS_EXT_COOKIE = 44,
+	/** psk modes supported by the client **/
+	TLS_EXT_PSK_KEY_EXCHANGE_MODES = 45,
+	/** indicate supported ca's by endpoint **/
+	TLS_EXT_CERTIFICATE_AUTHORITIES = 47,
+	/** provide oid/value pairs to match client's certificate **/
+	TLS_EXT_OID_FILTERS = 48,
+	/** willing to perform post-handshake authentication **/
+	TLS_EXT_POST_HANDSHAKE_AUTH = 49,
+	/** list supported signature algorithms to verify certificates **/
+	TLS_EXT_SIGNATURE_ALGORITHMS_CERT = 50,
+	/** list endpoint's cryptographic parameters **/
+	TLS_EXT_KEY_SHARE = 51,
 	/** cryptographic binding for RFC 5746 renegotiation indication */
 	TLS_EXT_RENEGOTIATION_INFO = 65281,
 };
