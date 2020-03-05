@@ -818,9 +818,12 @@ static status_t send_client_hello(private_tls_peer_t *this,
 	}
 	// TODO hard-coded supported versions extension
 	extensions->write_uint16(extensions, TLS_EXT_SUPPORTED_VERSIONS);
-	extensions->write_uint16(extensions, 3);
-	extensions->write_uint8(extensions, 2);
+	extensions->write_uint16(extensions, 9);
+	extensions->write_uint8(extensions, 8);
 	extensions->write_uint16(extensions, TLS_1_3);
+	extensions->write_uint16(extensions, TLS_1_2);
+	extensions->write_uint16(extensions, TLS_1_1);
+	extensions->write_uint16(extensions, TLS_1_0);
 
 	writer->write_data16(writer, extensions->get_buf(extensions));
 	extensions->destroy(extensions);
