@@ -14,6 +14,9 @@
  */
 
 #include "tls_crypto.h"
+#include "../libstrongswan/crypto/signers/signer.h"
+#include "../libstrongswan/crypto/diffie_hellman.h"
+#include "../libstrongswan/crypto/prfs/prf.h"
 
 #include <utils/debug.h>
 #include <plugins/plugin_feature.h>
@@ -429,6 +432,12 @@ typedef struct {
  * Mapping suites to a set of algorithms
  */
 static suite_algs_t suite_algs[] = {
+	// TODO implement rest and double check
+	{ TLS_AES_128_GCM_SHA256,
+   		KEY_ANY, MODP_NONE,
+   		HASH_SHA256, PRF_UNDEFINED,
+   		AUTH_HMAC_SHA2_256_256, ENCR_AES_GCM_ICV16, 16
+	},
 	{ TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA,
 		KEY_ECDSA, ECP_256_BIT,
 		HASH_SHA256, PRF_HMAC_SHA2_256,
@@ -988,12 +997,18 @@ static void filter_unsupported_suites(suite_algs_t suites[], int *count)
 	/* filter suite list by each algorithm */
 	filter_suite(suites, count, offsetof(suite_algs_t, encr),
 				 lib->crypto->create_crypter_enumerator);
+	// TODO these filters filter our beloved new ciphersuites
+/*
 	filter_suite(suites, count, offsetof(suite_algs_t, encr),
 				 lib->crypto->create_aead_enumerator);
+*/
 	filter_suite(suites, count, offsetof(suite_algs_t, mac),
 				 lib->crypto->create_signer_enumerator);
+	// TODO these filters filter our beloved new ciphersuites
+/*
 	filter_suite(suites, count, offsetof(suite_algs_t, prf),
 				 lib->crypto->create_prf_enumerator);
+*/
 	filter_suite(suites, count, offsetof(suite_algs_t, hash),
 				 lib->crypto->create_hasher_enumerator);
 	filter_suite(suites, count, offsetof(suite_algs_t, dh),
@@ -1028,6 +1043,7 @@ static void build_cipher_suite_list(private_tls_crypto_t *this,
 		filter_key_suites(this, suites, &count, KEY_ECDSA);
 	}
 
+	// TODO filters our cs
 	filter_unsupported_suites(suites, &count);
 
 	/* filter suites with strongswan.conf options */
