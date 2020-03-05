@@ -772,6 +772,7 @@ static status_t send_client_hello(private_tls_peer_t *this,
 	writer->write_uint8(writer, 1);
 	writer->write_uint8(writer, 0);
 
+	// TODO why 32 byte?
 	extensions = bio_writer_create(32);
 
 	extensions->write_uint16(extensions, TLS_EXT_SIGNATURE_ALGORITHMS);
@@ -815,6 +816,11 @@ static status_t send_client_hello(private_tls_peer_t *this,
 		extensions->write_data16(extensions, names->get_buf(names));
 		names->destroy(names);
 	}
+	// TODO hard-coded supported versions extension
+	extensions->write_uint16(extensions, TLS_EXT_SUPPORTED_VERSIONS);
+	extensions->write_uint16(extensions, 3);
+	extensions->write_uint8(extensions, 2);
+	extensions->write_uint16(extensions, TLS_1_3);
 
 	writer->write_data16(writer, extensions->get_buf(extensions));
 	extensions->destroy(extensions);
