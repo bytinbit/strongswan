@@ -784,7 +784,7 @@ static status_t send_client_hello(private_tls_peer_t *this,
 	{
 		if (!curves)
 		{
-			extensions->write_uint16(extensions, TLS_EXT_ELLIPTIC_CURVES);
+			extensions->write_uint16(extensions, TLS_EXT_SUPPORTED_GROUPS);
 			curves = bio_writer_create(16);
 		}
 		curves->write_uint16(curves, curve);
@@ -824,6 +824,14 @@ static status_t send_client_hello(private_tls_peer_t *this,
 	extensions->write_uint16(extensions, TLS_1_2);
 	extensions->write_uint16(extensions, TLS_1_1);
 	extensions->write_uint16(extensions, TLS_1_0);
+
+	// Supported Groups
+	extensions->write_uint16(extensions, TLS_EXT_SUPPORTED_GROUPS);
+	extensions->write_uint16(extensions, 8);
+	extensions->write_uint16(extensions, 6);
+	extensions->write_uint16(extensions, TLS_SECP256R1);
+	extensions->write_uint16(extensions, TLS_SECP384R1);
+	extensions->write_uint16(extensions, TLS_SECP521R1);
 
 	writer->write_data16(writer, extensions->get_buf(extensions));
 	extensions->destroy(extensions);
