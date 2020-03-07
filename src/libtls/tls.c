@@ -89,7 +89,7 @@ ENUM_BEGIN(tls_extension_names, TLS_EXT_SERVER_NAME, TLS_EXT_STATUS_REQUEST,
 	"status request",
 );
 ENUM_NEXT(tls_extension_names,
-		TLS_EXT_ELLIPTIC_CURVES, TLS_EXT_EC_POINT_FORMATS,
+		TLS_EXT_SUPPORTED_GROUPS, TLS_EXT_EC_POINT_FORMATS,
 		TLS_EXT_STATUS_REQUEST,
 	"elliptic curves",
 	"ec point formats");

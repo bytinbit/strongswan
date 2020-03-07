@@ -256,7 +256,7 @@ static status_t process_client_hello(private_tls_server_t *this,
 				case TLS_EXT_SIGNATURE_ALGORITHMS:
 					this->hashsig = chunk_clone(ext);
 					break;
-				case TLS_EXT_ELLIPTIC_CURVES:
+				case TLS_EXT_SUPPORTED_GROUPS:
 					this->curves_received = TRUE;
 					this->curves = chunk_clone(ext);
 					break;
