@@ -784,7 +784,7 @@ static status_t send_client_hello(private_tls_peer_t *this,
 	{
 		if (!curves)
 		{
-			extensions->write_uint16(extensions, TLS_EXT_SUPPORTED_GROUPS);
+			extensions->write_uint16(extensions, TLS_EXT_ELLIPTIC_CURVES);
 			curves = bio_writer_create(16);
 		}
 		curves->write_uint16(curves, curve);
@@ -816,22 +816,27 @@ static status_t send_client_hello(private_tls_peer_t *this,
 		extensions->write_data16(extensions, names->get_buf(names));
 		names->destroy(names);
 	}
-	// TODO hard-coded supported versions extension
-	extensions->write_uint16(extensions, TLS_EXT_SUPPORTED_VERSIONS);
-	extensions->write_uint16(extensions, 9);
-	extensions->write_uint8(extensions, 8);
+	// TODO the following are hard-coded extensions
+	extensions->write_uint16(extensions, TLS_EXT_SUPPORTED_VERSIONS); // 0x2b
+	extensions->write_uint16(extensions, 3);
+	extensions->write_uint8(extensions, 2);
 	extensions->write_uint16(extensions, TLS_1_3);
-	extensions->write_uint16(extensions, TLS_1_2);
-	extensions->write_uint16(extensions, TLS_1_1);
-	extensions->write_uint16(extensions, TLS_1_0);
 
-	// Supported Groups
-	extensions->write_uint16(extensions, TLS_EXT_SUPPORTED_GROUPS);
-	extensions->write_uint16(extensions, 8);
-	extensions->write_uint16(extensions, 6);
-	extensions->write_uint16(extensions, TLS_SECP256R1);
-	extensions->write_uint16(extensions, TLS_SECP384R1);
-	extensions->write_uint16(extensions, TLS_SECP521R1);
+	// Cookie 44, 0x2c
+	extensions->write_uint16(extensions, TLS_EXT_COOKIE);
+	extensions->write_uint16(extensions, 5);
+	extensions->write_uint16(extensions, 3);
+	extensions->write_uint16(extensions, 0xC0FF);
+	extensions->write_uint8(extensions, 0xEE);
+
+	// signature algs 13, 0x0D from tls 1.2 is replaced by another enum (RFC p. 42)
+
+	// signature algs cert 50, 0x32
+
+	// negotiated groups = supported groups 10, 0x0A
+	// = used to be ELLIPTIC_CURVES in TLS 1.2, i.e. now supported groups" instead of "supported curves".
+
+	// key share 51, 0x33
 
 	writer->write_data16(writer, extensions->get_buf(extensions));
 	extensions->destroy(extensions);
