@@ -433,11 +433,34 @@ typedef struct {
  */
 static suite_algs_t suite_algs[] = {
 	// TODO implement rest and double check
+	// old: TLS_[key exchange]_[auth]_with_[cipher]_[mac or prf]
+	// new: TLS_[cipher]_[mac or prf], ditched key exchange, signature alg (auth)
 	{ TLS_AES_128_GCM_SHA256,
    		KEY_ANY, MODP_NONE,
    		HASH_SHA256, PRF_UNDEFINED,
    		AUTH_HMAC_SHA2_256_256, ENCR_AES_GCM_ICV16, 16
 	},
+	{ TLS_AES_256_GCM_SHA384,
+        KEY_ANY, MODP_NONE,
+		HASH_SHA384, PRF_UNDEFINED,
+		AUTH_HMAC_SHA2_384_384, ENCR_AES_GCM_ICV16, 16
+	},
+	{ TLS_CHACHA20_POLY1305_SHA256,
+        KEY_ANY, MODP_NONE,
+		HASH_SHA256, PRF_UNDEFINED,
+		AUTH_HMAC_SHA2_256_256, ENCR_CHACHA20_POLY1305, 16
+	},
+	{ TLS_AES_128_CCM_SHA256,
+	  KEY_ANY, MODP_NONE,
+	  HASH_SHA256, PRF_UNDEFINED,
+	  AUTH_HMAC_SHA2_256_256, ENCR_AES_CCM_ICV16, 16
+	},
+	{ TLS_AES_128_CCM_8_SHA256,
+	  KEY_ANY, MODP_NONE,
+	  HASH_SHA256, PRF_UNDEFINED,
+	  AUTH_HMAC_SHA2_256_256, ENCR_AES_CCM_ICV8, 16
+	},
+	// old/previous cipher suites
 	{ TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA,
 		KEY_ECDSA, ECP_256_BIT,
 		HASH_SHA256, PRF_HMAC_SHA2_256,
