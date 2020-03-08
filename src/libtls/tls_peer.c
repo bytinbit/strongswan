@@ -817,12 +817,11 @@ static status_t send_client_hello(private_tls_peer_t *this,
 		names->destroy(names);
 	}
 	// TODO the following are hard-coded extensions
-	extensions->write_uint16(extensions, TLS_EXT_SUPPORTED_VERSIONS); // 0x2b
+	extensions->write_uint16(extensions, TLS_EXT_SUPPORTED_VERSIONS);
 	extensions->write_uint16(extensions, 3);
 	extensions->write_uint8(extensions, 2);
 	extensions->write_uint16(extensions, TLS_1_3);
 
-	// Cookie 44, 0x2c
 	extensions->write_uint16(extensions, TLS_EXT_COOKIE);
 	extensions->write_uint16(extensions, 5);
 	extensions->write_uint16(extensions, 3);
@@ -836,7 +835,15 @@ static status_t send_client_hello(private_tls_peer_t *this,
 	// negotiated groups = supported groups 10, 0x0A
 	// = used to be ELLIPTIC_CURVES in TLS 1.2, i.e. now supported groups" instead of "supported curves".
 
-	// key share 51, 0x33
+	extensions->write_uint16(extensions, TLS_EXT_KEY_SHARE);
+	extensions->write_uint16(extensions, 38);
+	extensions->write_uint16(extensions, 36);
+	extensions->write_uint16(extensions, 0x1E);
+	extensions->write_uint16(extensions, 32);
+	extensions->write_uint64(extensions, 0xBEEFC0FFEEDECAF0);
+	extensions->write_uint64(extensions, 0xBEEFC0FFEEDECAF0);
+	extensions->write_uint64(extensions, 0xBEEFC0FFEEDECAF0);
+	extensions->write_uint64(extensions, 0xBEEFC0FFEEDECAF0);
 
 	writer->write_data16(writer, extensions->get_buf(extensions));
 	extensions->destroy(extensions);
