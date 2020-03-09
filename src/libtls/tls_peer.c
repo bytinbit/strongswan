@@ -828,12 +828,20 @@ static status_t send_client_hello(private_tls_peer_t *this,
 	extensions->write_uint16(extensions, 0xC0FF);
 	extensions->write_uint8(extensions, 0xEE);
 
-	// signature algs 13, 0x0D from tls 1.2 is replaced by another enum (RFC p. 42)
-
-	// signature algs cert 50, 0x32
+	extensions->write_uint16(extensions, TLS_EXT_SIGNATURE_ALGORITHMS);
+	extensions->write_uint16(extensions, 12);
+	extensions->write_uint16(extensions, 10);
+	// TODO where is the enum SignatureScheme defined which is mentioned in rfc 8446 p 42?
+	extensions->write_uint16(extensions, 0x0401);
+	extensions->write_uint16(extensions, 0x0403);
+	extensions->write_uint16(extensions, 0x0804);
+	extensions->write_uint16(extensions, 0x0807);
+	extensions->write_uint16(extensions, 0x0201);
 
 	// negotiated groups = supported groups 10, 0x0A
 	// = used to be ELLIPTIC_CURVES in TLS 1.2, i.e. now supported groups" instead of "supported curves".
+
+	// signature algs cert 50, 0x32
 
 	extensions->write_uint16(extensions, TLS_EXT_KEY_SHARE);
 	extensions->write_uint16(extensions, 38);
