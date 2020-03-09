@@ -141,7 +141,9 @@ enum tls_extension_t {
 	/** list of OCSP responders the client trusts */
 	TLS_EXT_STATUS_REQUEST = 5,
 	/** list of supported elliptic curves */
-	TLS_EXT_SUPPORTED_GROUPS = 10,
+	// TODO: RENAMED TO supported_groups in TLS 1.3!
+	TLS_EXT_ELLIPTIC_CURVES = 10,
+
 	/** supported point formats */
 	TLS_EXT_EC_POINT_FORMATS = 11,
 	/** list supported signature algorithms */
