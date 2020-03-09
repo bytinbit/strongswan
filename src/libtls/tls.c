@@ -423,6 +423,7 @@ METHOD(tls_t, set_version, bool,
 		case TLS_1_0:
 		case TLS_1_1:
 		case TLS_1_2:
+		case TLS_1_3:
 			this->version = version;
 			this->protection->set_version(this->protection, version);
 			return TRUE;
