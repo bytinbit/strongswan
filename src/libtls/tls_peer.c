@@ -775,8 +775,9 @@ static status_t send_client_hello(private_tls_peer_t *this,
 	// TODO why 32 byte?
 	extensions = bio_writer_create(32);
 
-	extensions->write_uint16(extensions, TLS_EXT_SIGNATURE_ALGORITHMS);
-	this->crypto->get_signature_algorithms(this->crypto, extensions);
+	// FIXME: commented out to enable new TLS 1.3 extension by the same name
+	// extensions->write_uint16(extensions, TLS_EXT_SIGNATURE_ALGORITHMS);
+	// this->crypto->get_signature_algorithms(this->crypto, extensions);
 
 	/* add supported Elliptic Curves, if any */
 	enumerator = this->crypto->create_ec_enumerator(this->crypto);
@@ -784,7 +785,8 @@ static status_t send_client_hello(private_tls_peer_t *this,
 	{
 		if (!curves)
 		{
-			extensions->write_uint16(extensions, TLS_EXT_ELLIPTIC_CURVES);
+			extensions->write_uint16(extensions, TLS_EXT_SUPPORTED_GROUPS);
+			// renamed in TLS 1.3
 			curves = bio_writer_create(16);
 		}
 		curves->write_uint16(curves, curve);
@@ -818,9 +820,14 @@ static status_t send_client_hello(private_tls_peer_t *this,
 	}
 	// TODO the following are hard-coded extensions
 	extensions->write_uint16(extensions, TLS_EXT_SUPPORTED_VERSIONS);
-	extensions->write_uint16(extensions, 3);
-	extensions->write_uint8(extensions, 2);
+	extensions->write_uint16(extensions, 9);
+	extensions->write_uint8(extensions, 8);
+	// TODO: iterate over versions
 	extensions->write_uint16(extensions, TLS_1_3);
+	extensions->write_uint16(extensions, TLS_1_2);
+	extensions->write_uint16(extensions, TLS_1_1);
+	extensions->write_uint16(extensions, TLS_1_0);
+
 
 	extensions->write_uint16(extensions, TLS_EXT_COOKIE);
 	extensions->write_uint16(extensions, 5);
@@ -831,7 +838,7 @@ static status_t send_client_hello(private_tls_peer_t *this,
 	extensions->write_uint16(extensions, TLS_EXT_SIGNATURE_ALGORITHMS);
 	extensions->write_uint16(extensions, 12);
 	extensions->write_uint16(extensions, 10);
-	// TODO where is the enum SignatureScheme defined which is mentioned in rfc 8446 p 42?
+	// These are the values of the NEW enum SignatureScheme mentioned on  p 42?
 	extensions->write_uint16(extensions, 0x0401);
 	extensions->write_uint16(extensions, 0x0403);
 	extensions->write_uint16(extensions, 0x0804);
@@ -846,7 +853,7 @@ static status_t send_client_hello(private_tls_peer_t *this,
 	extensions->write_uint16(extensions, TLS_EXT_KEY_SHARE);
 	extensions->write_uint16(extensions, 38);
 	extensions->write_uint16(extensions, 36);
-	extensions->write_uint16(extensions, 0x1E);
+	extensions->write_uint16(extensions, 0x1E);  // new enum NamedGroup, RFC p. 47
 	extensions->write_uint16(extensions, 32);
 	extensions->write_uint64(extensions, 0xBEEFC0FFEEDECAF0);
 	extensions->write_uint64(extensions, 0xBEEFC0FFEEDECAF0);

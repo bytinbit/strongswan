@@ -89,10 +89,10 @@ ENUM_BEGIN(tls_extension_names, TLS_EXT_SERVER_NAME, TLS_EXT_STATUS_REQUEST,
 	"status request",
 );
 ENUM_NEXT(tls_extension_names,
-		TLS_EXT_SUPPORTED_GROUPS, TLS_EXT_EC_POINT_FORMATS,
-		TLS_EXT_STATUS_REQUEST,
-	"elliptic curves",
-	"ec point formats");
+          TLS_EXT_SUPPORTED_GROUPS, TLS_EXT_EC_POINT_FORMATS,
+          TLS_EXT_STATUS_REQUEST,
+          "elliptic curves",
+          "ec point formats");
 ENUM_NEXT(tls_extension_names,
 		TLS_EXT_SIGNATURE_ALGORITHMS, TLS_EXT_SIGNATURE_ALGORITHMS,
 		TLS_EXT_EC_POINT_FORMATS,
@@ -521,6 +521,8 @@ tls_t *tls_create(bool is_server, identification_t *server,
 		},
 		.is_server = is_server,
 		.version = TLS_1_2,
+		// TODO: used for the Record Protocol, but also to indicate max version supported by client
+		// must be adapted for TLS 1.3 to be able to serve dual purpose
 		.application = application,
 		.purpose = purpose,
 	);
