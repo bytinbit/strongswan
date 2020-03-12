@@ -786,7 +786,7 @@ static status_t send_client_hello(private_tls_peer_t *this,
 		if (!curves)
 		{
 			extensions->write_uint16(extensions, TLS_EXT_SUPPORTED_GROUPS);
-			// renamed in TLS 1.3
+			// elliptic_curves renamed in TLS 1.3 to supported_groups
 			curves = bio_writer_create(16);
 		}
 		curves->write_uint16(curves, curve);
@@ -828,17 +828,18 @@ static status_t send_client_hello(private_tls_peer_t *this,
 	extensions->write_uint16(extensions, TLS_1_1);
 	extensions->write_uint16(extensions, TLS_1_0);
 
-
+	/* Commented out because the Client doesn't initiate sending of the Cookie
 	extensions->write_uint16(extensions, TLS_EXT_COOKIE);
 	extensions->write_uint16(extensions, 5);
 	extensions->write_uint16(extensions, 3);
 	extensions->write_uint16(extensions, 0xC0FF);
 	extensions->write_uint8(extensions, 0xEE);
+	*/
 
 	extensions->write_uint16(extensions, TLS_EXT_SIGNATURE_ALGORITHMS);
 	extensions->write_uint16(extensions, 12);
 	extensions->write_uint16(extensions, 10);
-	// These are the values of the NEW enum SignatureScheme mentioned on  p 42?
+	// These are the values of the NEW enum SignatureScheme mentioned on p 42
 	extensions->write_uint16(extensions, 0x0401);
 	extensions->write_uint16(extensions, 0x0403);
 	extensions->write_uint16(extensions, 0x0804);
@@ -847,8 +848,15 @@ static status_t send_client_hello(private_tls_peer_t *this,
 
 	// negotiated groups = supported groups 10, 0x0A
 	// = used to be ELLIPTIC_CURVES in TLS 1.2, i.e. now supported groups" instead of "supported curves".
+	extensions->write_uint16(extensions, TLS_EXT_SUPPORTED_GROUPS);
+	extensions->write_uint16(extensions, 8);
+	extensions->write_uint16(extensions, 6);
+	extensions->write_uint16(extensions, TLS_SECP256R1);
+	extensions->write_uint16(extensions, TLS_SECP384R1);
+	extensions->write_uint16(extensions, TLS_SECP521R1);
 
-	// signature algs cert 50, 0x32
+
+	// signature algs cert 50, 0x32, not done
 
 	extensions->write_uint16(extensions, TLS_EXT_KEY_SHARE);
 	extensions->write_uint16(extensions, 38);
