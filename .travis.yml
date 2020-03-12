@@ -1,114 +1,95 @@
 language: c
-
-os: linux
+sudo: required
 dist: bionic
-
-# don't build tags separately
 if: tag IS blank
-
 compiler: gcc
-
 cache: ccache
-
 before_install:
-  - travis_retry ./scripts/test.sh deps
-  - travis_retry ./scripts/test.sh pydeps
-
+- travis_retry ./scripts/test.sh deps
+- travis_retry ./scripts/test.sh pydeps
 before_script:
-  - sudo sysctl -w net.ipv6.conf.all.disable_ipv6=0 || true
-
+- sudo sysctl -w net.ipv6.conf.all.disable_ipv6=0 || true
 script:
-  - ./scripts/test.sh
-
-after_success:
-  if [ "$TEST" == "coverage" ]; then
-    bash <(curl -s https://codecov.io/bash);
+- "./scripts/test.sh"
+after_success: if [ "$TEST" == "coverage" ]; then bash <(curl -s https://codecov.io/bash);
   fi
-
 after_failure:
-  - cat config.log
-  - sleep 1
-
+- cat config.log
+- sleep 1
 env:
   global:
-    - TESTS_REDUCED_KEYLENGTHS=yes
-    - LEAK_DETECTIVE=no
-    - MONOLITHIC=no
-
-jobs:
+  - TESTS_REDUCED_KEYLENGTHS=yes
+  - LEAK_DETECTIVE=no
+  - MONOLITHIC=no
+  - secure: ko+fAiNikndMjtmDV4MHH58Kc71Wo1XfqWWkFMDkJ8xb6XbFZldjsy5cS5IiUQyyalGeRtr3D6zy5sdagiSS6BLKmi6xsMMetxzuyixARrhZTWI1lwGrUCvoY5B1lSCheCEasIbPeS3SQylioPhDeyWHmhjhFULzhUpzN7z7C0oJ0lCmH8uDwDFrjZDu8m3iTqdcGiuqLrMZGGVZ+HyLUWnLKv0ElB7jX6ie72LZmmLzOaRw2k0h52/ckvoDMB7KNrcR8VCbIA6bFMss/89QNCVSyvbwmMj7VwO/LTQlkdm33Ufd0b0zF05CNc21upQobxAmbMX5e+BY7WqERj1jJ4p+Z5Wi/ti+KOQLAMoWl6znLARgt/c4AsKVvyo/wP+En6JrGl2DFgdaCYchsbTG0+hzG3IS19W/5uBwRnNZtI+Lt3mFQapcEeh129FVNSrkNScAxoVyRRBJc51wkKO3YZ6ytdhfbWwCnkWLR5VCR+oFa1DglL8pVzCf6L5LrfflMLMCvsA/2SGFuY2ZVqbjC17m7LIavJZT3Mk3k4VfAFI0q5Twxp86wr5YVKjr+qLjhNfk1jfYv14a+/E1csV5gVyvykIxjEQsF13cu+DNzxrSM7G3+R8MHVQQLmiU7OB0ezRHG18rVIGYXeYUcvXnEIAV6/ZWWdAcJDXTozh+J4E=
+matrix:
   include:
-    - env: TEST=sonarcloud
-      if: type = push AND env(SONAR_TOKEN) IS present
-      git:
-        depth: false
-      cache:
-        directories:
-          - $HOME/.sonar-cache
-      addons:
-        sonarcloud:
-          organization: "strongswan"
-    - env: TEST=lgtm
-      if: type = push AND env(LGTM_TOKEN) IS present
-      git:
-        depth: false
-    - env: TEST=osx
-      compiler: clang
-      os: osx
-    - env: TEST=all
-    - env: TEST=all
-      compiler: clang
-    - env: TEST=all
-      arch: arm64
-    - env: TEST=all
-      arch: ppc64le
-    - env: TEST=all
-      arch: s390x
-    - env: TEST=all
-      dist: xenial
-    - env: TEST=all
-      dist: xenial
-      compiler: clang
-    - env: TEST=all MONOLITHIC=yes
-    - env: TEST=all MONOLITHIC=yes
-      compiler: clang
-    - env: TEST=all LEAK_DETECTIVE=yes
-    - env: TEST=all LEAK_DETECTIVE=yes
-      compiler: clang
-    - env: TEST=coverage
-    - env: TEST=fuzzing MONOLITHIC=yes
-      compiler: clang
-    - env: TEST=win64 MONOLITHIC=yes
-    - env: TEST=win32 MONOLITHIC=yes
-    - env: TEST=dist
-    # "default" with GCC is already tested with "dist" above
-    - env: TEST=default
-      compiler: clang
-    - env: TEST=default MONOLITHIC=yes
-    - env: TEST=default MONOLITHIC=yes
-      compiler: clang
-    - env: TEST=default LEAK_DETECTIVE=yes
-    - env: TEST=default LEAK_DETECTIVE=yes
-      compiler: clang
-    # we can't test Vstr as negative int args are not properly passed to CBs
-    - env: TEST=printf-builtin
-    - env: TEST=printf-builtin
-      compiler: clang
-    - env: TEST=printf-builtin LEAK_DETECTIVE=yes
-    - env: TEST=printf-builtin LEAK_DETECTIVE=yes
-      compiler: clang
-    - env: TEST=nm
-    - env: TEST=nm-no-glib
-    # the crypto plugins are build-tested with clang via "all" above
-    - env: TEST=botan
-    - env: TEST=botan LEAK_DETECTIVE=yes
-    - env: TEST=wolfssl
-    - env: TEST=wolfssl LEAK_DETECTIVE=yes
-    - env: TEST=openssl
-    - env: TEST=openssl LEAK_DETECTIVE=yes
-    - env: TEST=openssl-1.0
-      dist: xenial
-    - env: TEST=openssl-1.0 LEAK_DETECTIVE=yes
-      dist: xenial
-    - env: TEST=gcrypt
-    - env: TEST=gcrypt LEAK_DETECTIVE=yes
-    - env: TEST=apidoc
+  - env: TEST=sonarcloud
+    if: type = push AND env(SONAR_TOKEN) IS present
+    git:
+      depth: false
+    addons:
+      sonarcloud:
+        organization: strongswan
+  - env: TEST=lgtm
+    if: type = push AND env(LGTM_TOKEN) IS present
+    git:
+      depth: false
+  - env: TEST=osx
+    compiler: clang
+    os: osx
+  - env: TEST=all
+  - env: TEST=all
+    compiler: clang
+  - env: TEST=all
+    arch: arm64
+  - env: TEST=all
+    arch: ppc64le
+  - env: TEST=all
+    arch: s390x
+  - env: TEST=all
+    dist: xenial
+  - env: TEST=all
+    dist: xenial
+    compiler: clang
+  - env: TEST=all MONOLITHIC=yes
+  - env: TEST=all MONOLITHIC=yes
+    compiler: clang
+  - env: TEST=all LEAK_DETECTIVE=yes
+  - env: TEST=all LEAK_DETECTIVE=yes
+    compiler: clang
+  - env: TEST=coverage
+  - env: TEST=fuzzing MONOLITHIC=yes
+    compiler: clang
+  - env: TEST=win64 MONOLITHIC=yes
+  - env: TEST=win32 MONOLITHIC=yes
+  - env: TEST=dist
+  - env: TEST=default
+    compiler: clang
+  - env: TEST=default MONOLITHIC=yes
+  - env: TEST=default MONOLITHIC=yes
+    compiler: clang
+  - env: TEST=default LEAK_DETECTIVE=yes
+  - env: TEST=default LEAK_DETECTIVE=yes
+    compiler: clang
+  - env: TEST=printf-builtin
+  - env: TEST=printf-builtin
+    compiler: clang
+  - env: TEST=printf-builtin LEAK_DETECTIVE=yes
+  - env: TEST=printf-builtin LEAK_DETECTIVE=yes
+    compiler: clang
+  - env: TEST=nm
+  - env: TEST=nm-no-glib
+  - env: TEST=botan
+  - env: TEST=botan LEAK_DETECTIVE=yes
+  - env: TEST=wolfssl
+  - env: TEST=wolfssl LEAK_DETECTIVE=yes
+  - env: TEST=openssl
+  - env: TEST=openssl LEAK_DETECTIVE=yes
+  - env: TEST=openssl-1.0
+    dist: xenial
+  - env: TEST=openssl-1.0 LEAK_DETECTIVE=yes
+    dist: xenial
+  - env: TEST=gcrypt
+  - env: TEST=gcrypt LEAK_DETECTIVE=yes
+  - env: TEST=apidoc
