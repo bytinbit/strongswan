@@ -23,6 +23,7 @@
 #include "tls_crypto.h"
 #include "tls_server.h"
 #include "tls_peer.h"
+#include "../../../../../../../usr/include/linux/ethtool.h"
 
 ENUM_BEGIN(tls_version_names, SSL_2_0, SSL_2_0,
 	"SSLv2");
@@ -151,9 +152,14 @@ struct private_tls_t {
 	bool is_server;
 
 	/**
-	 * Negotiated TLS version
+	 * Negotiated TLS version and maximum supported TLS version
 	 */
-	tls_version_t version;
+	tls_version_t version_max;
+
+	/**
+	 * Minimal supported TLS version
+	 */
+	tls_version_t version_min;
 
 	/**
 	 * TLS stack purpose, as given to constructor
@@ -344,7 +350,15 @@ METHOD(tls_t, build, status_t,
 			{
 				case NEED_MORE:
 					record.type = type;
-					htoun16(&record.version, this->version);
+					// TODO keep an eye on this!
+					if (this->version_max == TLS_1_3)
+					{
+						htoun16(&record.version, TLS_1_2);
+					}
+					else
+					{
+						htoun16(&record.version, this->version_max);
+					}
 					htoun16(&record.length, data.len);
 					this->output = chunk_cat("mcm", this->output,
 											 chunk_from_thing(record), data);
@@ -408,13 +422,13 @@ METHOD(tls_t, get_peer_id, identification_t*,
 METHOD(tls_t, get_version, tls_version_t,
 	private_tls_t *this)
 {
-	return this->version;
+	return this->version_max;
 }
 
 METHOD(tls_t, set_version, bool,
 	private_tls_t *this, tls_version_t version)
 {
-	if (version > this->version)
+	if (version > this->version_max)
 	{
 		return FALSE;
 	}
@@ -424,7 +438,7 @@ METHOD(tls_t, set_version, bool,
 		case TLS_1_1:
 		case TLS_1_2:
 		case TLS_1_3:
-			this->version = version;
+			this->version_max = version;
 			this->protection->set_version(this->protection, version);
 			return TRUE;
 		case SSL_2_0:
@@ -520,8 +534,9 @@ tls_t *tls_create(bool is_server, identification_t *server,
 			.destroy = _destroy,
 		},
 		.is_server = is_server,
-		.version = TLS_1_2,
-		// TODO: used for the Record Protocol, but also to indicate max version supported by client
+		.version_max = TLS_1_3,
+		.version_min = TLS_1_0,
+	// TODO: used for the Record Protocol, but also to indicate max version supported by client
 		// must be adapted for TLS 1.3 to be able to serve dual purpose
 		.application = application,
 		.purpose = purpose,
