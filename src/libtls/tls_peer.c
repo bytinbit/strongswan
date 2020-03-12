@@ -385,7 +385,7 @@ static status_t process_modp_key_exchange(private_tls_peer_t *this,
 	free(chunk.ptr);
 
 	this->dh = lib->crypto->create_dh(lib->crypto, MODP_CUSTOM,
-									  generator, prime);
+									  generator, prime); // TODO generator and prime are only required by TLS 1.2 not in  1.3 negotiation
 	if (!this->dh)
 	{
 		DBG1(DBG_TLS, "custom DH parameters not supported");
@@ -857,6 +857,7 @@ static status_t send_client_hello(private_tls_peer_t *this,
 
 
 	// signature algs cert 50, 0x32, not done
+	// TODO: allenfalls in crypto.c
 
 	extensions->write_uint16(extensions, TLS_EXT_KEY_SHARE);
 	extensions->write_uint16(extensions, 38);

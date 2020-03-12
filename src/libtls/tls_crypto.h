@@ -334,6 +334,8 @@ extern enum_name_t *tls_ecc_curve_type_names;
  * TLS Named Curve identifiers
  */
 enum tls_named_curve_t {
+	// TODO rename to named_group and add missing values
+	// These values are used/named in MODP_
 	TLS_SECT163K1 =		 1,
 	TLS_SECT163R1 =		 2,
 	TLS_SECT163R2 =		 3,
