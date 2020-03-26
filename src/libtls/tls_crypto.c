@@ -432,9 +432,8 @@ typedef struct {
  * Mapping suites to a set of algorithms
  */
 static suite_algs_t suite_algs[] = {
-	// TODO implement rest and double check
-	// old: TLS_[key exchange]_[auth]_with_[cipher]_[mac or prf]
-	// new: TLS_[cipher]_[mac or prf], ditched key exchange, signature alg (auth)
+	/* Cipher suites of TLS 1.3: key exchange and authentication
+	 * delegated to extensions, therefore KEY_ANY, MODP_NONE, PRF_UNDEFINED */
 	{ TLS_AES_128_GCM_SHA256,
    		KEY_ANY, MODP_NONE,
    		HASH_SHA256, PRF_UNDEFINED,
@@ -460,7 +459,7 @@ static suite_algs_t suite_algs[] = {
 	  HASH_SHA256, PRF_UNDEFINED,
 	  AUTH_HMAC_SHA2_256_256, ENCR_AES_CCM_ICV8, 16
 	},
-	// old/previous cipher suites
+	/* Legacy TLS cipher suites */
 	{ TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA,
 		KEY_ECDSA, ECP_256_BIT,
 		HASH_SHA256, PRF_HMAC_SHA2_256,
