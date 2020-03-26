@@ -736,6 +736,7 @@ static status_t send_client_hello(private_tls_peer_t *this,
 	enumerator_t *enumerator;
 	int count, i;
 	rng_t *rng;
+	chunk_t pub;
 
 	htoun32(&this->client_random, time(NULL));
 	rng = lib->crypto->create_rng(lib->crypto, RNG_WEAK);
@@ -752,6 +753,7 @@ static status_t send_client_hello(private_tls_peer_t *this,
 
 	/* Client Key Generation */
     this->dh = lib->crypto->create_dh(lib->crypto, CURVE_25519);
+
 
 	/* TLS version */
 	version = this->tls->get_version(this->tls);
@@ -861,23 +863,24 @@ static status_t send_client_hello(private_tls_peer_t *this,
 		extensions->write_uint16(extensions, TLS_EXT_SUPPORTED_GROUPS);
 		extensions->write_uint16(extensions, 8);
 		extensions->write_uint16(extensions, 6);
-		extensions->write_uint16(extensions, TLS_SECP256R1);
+		extensions->write_uint16(extensions, 0x001D);
 		extensions->write_uint16(extensions, TLS_SECP384R1);
 		extensions->write_uint16(extensions, TLS_SECP521R1);
 
 
-		// signature algs cert 50, 0x32, not done
-		// TODO: allenfalls in crypto.c
-
+		/* Extension: key_share */
+		if (!this->dh->get_my_public_value(this->dh, &pub))
+		{
+			this->alert->add(this->alert, TLS_FATAL, TLS_INTERNAL_ERROR);
+			return NEED_MORE;
+		}
 		extensions->write_uint16(extensions, TLS_EXT_KEY_SHARE);
 		extensions->write_uint16(extensions, 38);
 		extensions->write_uint16(extensions, 36);
-		extensions->write_uint16(extensions, 0x1E);  // new enum NamedGroup, RFC p. 47
+		extensions->write_uint16(extensions, 0x001D);  // new enum NamedGroup, RFC p. 47
 		extensions->write_uint16(extensions, 32);
-		extensions->write_uint64(extensions, 0xBEEFC0FFEEDECAF0);
-		extensions->write_uint64(extensions, 0xBEEFC0FFEEDECAF0);
-		extensions->write_uint64(extensions, 0xBEEFC0FFEEDECAF0);
-		extensions->write_uint64(extensions, 0xBEEFC0FFEEDECAF0);
+		extensions->write_data(extensions, pub);
+		free(pub.ptr);
 	}
 
 	writer->write_data16(writer, extensions->get_buf(extensions));
