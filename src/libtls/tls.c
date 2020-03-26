@@ -350,14 +350,13 @@ METHOD(tls_t, build, status_t,
 			{
 				case NEED_MORE:
 					record.type = type;
-					// TODO keep an eye on this!
-					if (this->version_max == TLS_1_3)
+					if (this->version_max < TLS_1_3)
 					{
-						htoun16(&record.version, TLS_1_2);
+						htoun16(&record.version, this->version_max);
 					}
 					else
 					{
-						htoun16(&record.version, this->version_max);
+						htoun16(&record.version, TLS_1_2);
 					}
 					htoun16(&record.length, data.len);
 					this->output = chunk_cat("mcm", this->output,

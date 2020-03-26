@@ -757,11 +757,11 @@ static status_t send_client_hello(private_tls_peer_t *this,
 
 	/* TLS version */
 	version = this->tls->get_version(this->tls);
-	if (version == TLS_1_3)
-	{
+	if (version < TLS_1_3) {
+		this->hello_version = version;
+	} else {
 		version = TLS_1_2;
 	}
-	this->hello_version = version;
 	writer->write_uint16(writer, version);
 	writer->write_data(writer, chunk_from_thing(this->client_random));
 
