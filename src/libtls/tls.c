@@ -418,10 +418,16 @@ METHOD(tls_t, get_peer_id, identification_t*,
 	return this->handshake->get_peer_id(this->handshake);
 }
 
-METHOD(tls_t, get_version, tls_version_t,
+METHOD(tls_t, get_version_max, tls_version_t,
 	private_tls_t *this)
 {
 	return this->version_max;
+}
+
+METHOD(tls_t, get_version_min, tls_version_t,
+       private_tls_t *this)
+{
+	return this->version_min;
 }
 
 METHOD(tls_t, set_version, bool,
@@ -524,7 +530,8 @@ tls_t *tls_create(bool is_server, identification_t *server,
 			.is_server = _is_server,
 			.get_server_id = _get_server_id,
 			.get_peer_id = _get_peer_id,
-			.get_version = _get_version,
+			.get_version_max = _get_version_max,
+            .get_version_min = _get_version_min,
 			.set_version = _set_version,
 			.get_purpose = _get_purpose,
 			.is_complete = _is_complete,
@@ -535,8 +542,6 @@ tls_t *tls_create(bool is_server, identification_t *server,
 		.is_server = is_server,
 		.version_max = TLS_1_3,
 		.version_min = TLS_1_0,
-	// TODO: used for the Record Protocol, but also to indicate max version supported by client
-		// must be adapted for TLS 1.3 to be able to serve dual purpose
 		.application = application,
 		.purpose = purpose,
 	);

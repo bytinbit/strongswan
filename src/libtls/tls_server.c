@@ -299,7 +299,7 @@ static status_t process_client_hello(private_tls_server_t *this,
 		this->session = chunk_clone(session);
 		this->resume = TRUE;
 		DBG1(DBG_TLS, "resumed %N using suite %N",
-			 tls_version_names, this->tls->get_version(this->tls),
+			 tls_version_names, this->tls->get_version_max(this->tls),
 			 tls_cipher_suite_names, this->suite);
 	}
 	else
@@ -324,7 +324,7 @@ static status_t process_client_hello(private_tls_server_t *this,
 		}
 		DESTROY_IF(rng);
 		DBG1(DBG_TLS, "negotiated %N using suite %N",
-			 tls_version_names, this->tls->get_version(this->tls),
+			 tls_version_names, this->tls->get_version_max(this->tls),
 			 tls_cipher_suite_names, this->suite);
 	}
 	this->state = STATE_HELLO_RECEIVED;
@@ -688,7 +688,7 @@ static status_t send_server_hello(private_tls_server_t *this,
 							tls_handshake_type_t *type, bio_writer_t *writer)
 {
 	/* TLS version */
-	writer->write_uint16(writer, this->tls->get_version(this->tls));
+	writer->write_uint16(writer, this->tls->get_version_max(this->tls));
 	writer->write_data(writer, chunk_from_thing(this->server_random));
 
 	/* session identifier if we have one */
@@ -774,7 +774,7 @@ static status_t send_certificate_request(private_tls_server_t *this,
 	supported->write_uint8(supported, TLS_ECDSA_SIGN);
 	writer->write_data8(writer, supported->get_buf(supported));
 	supported->destroy(supported);
-	if (this->tls->get_version(this->tls) >= TLS_1_2)
+	if (this->tls->get_version_max(this->tls) >= TLS_1_2)
 	{
 		this->crypto->get_signature_algorithms(this->crypto, writer);
 	}

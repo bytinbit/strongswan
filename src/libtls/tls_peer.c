@@ -385,7 +385,7 @@ static status_t process_modp_key_exchange(private_tls_peer_t *this,
 	free(chunk.ptr);
 
 	this->dh = lib->crypto->create_dh(lib->crypto, MODP_CUSTOM,
-									  generator, prime); // TODO generator and prime are only required by TLS 1.2 not in  1.3 negotiation
+									  generator, prime);
 	if (!this->dh)
 	{
 		DBG1(DBG_TLS, "custom DH parameters not supported");
@@ -569,7 +569,7 @@ static status_t process_certreq(private_tls_peer_t *this, bio_reader_t *reader)
 		return NEED_MORE;
 	}
 	this->cert_types = chunk_clone(types);
-	if (this->tls->get_version(this->tls) >= TLS_1_2)
+	if (this->tls->get_version_max(this->tls) >= TLS_1_2)
 	{
 		if (!reader->read_data16(reader, &hashsig))
 		{
@@ -731,12 +731,13 @@ static status_t send_client_hello(private_tls_peer_t *this,
 {
 	tls_cipher_suite_t *suites;
 	bio_writer_t *extensions, *curves = NULL;
-	tls_version_t version;
+	tls_version_t version_max, version_min;
 	tls_named_group_t curve;
 	enumerator_t *enumerator;
-	int count, i;
+	int count, i, v;
 	rng_t *rng;
 	chunk_t pub;
+	u_int8_t nof_tls_versions;
 
 	htoun32(&this->client_random, time(NULL));
 	rng = lib->crypto->create_rng(lib->crypto, RNG_WEAK);
@@ -755,10 +756,11 @@ static status_t send_client_hello(private_tls_peer_t *this,
     this->dh = lib->crypto->create_dh(lib->crypto, CURVE_25519);
 
 
-	/* TLS version in Handshake Protocol */
-	version = this->tls->get_version(this->tls);
-	if (version < TLS_1_3) {
-		this->hello_version = version;
+	/* TLS version_max in Handshake Protocol */
+	version_max = this->tls->get_version_max(this->tls);
+	version_min = this->tls->get_version_min(this->tls);
+	if (version_max < TLS_1_3) {
+		this->hello_version = version_max;
 	} else {
 		this->hello_version = TLS_1_2;
 	}
@@ -788,8 +790,7 @@ static status_t send_client_hello(private_tls_peer_t *this,
 	{
 		bio_writer_t *names;
 
-		DBG2(DBG_TLS, "sending Server Name Indication for '%Y'", this->server);
-
+		DBG2(DBG_TLS, "sending extension: Server Name Indication for '%Y'", this->server);
 		names = bio_writer_create(8);
 		names->write_uint8(names, TLS_NAME_TYPE_HOST_NAME);
 		names->write_data16(names, this->server->get_encoding(this->server));
@@ -799,9 +800,10 @@ static status_t send_client_hello(private_tls_peer_t *this,
 		names->destroy(names);
 	}
 
-	if (version < TLS_1_3)
+	if (version_max < TLS_1_3)
 	{
-		/* add supported Elliptic Curves, if any */
+		DBG2(DBG_TLS, "sending extension: Supported Groups for legacy TLS");
+		/* add supported elliptic curves, if any */
 		enumerator = this->crypto->create_ec_enumerator(this->crypto);
 		while (enumerator->enumerate(enumerator, NULL, &curve))
 		{
@@ -828,33 +830,29 @@ static status_t send_client_hello(private_tls_peer_t *this,
 	}
 	else  /* using TLS 1.3 */
 	{
+		DBG2(DBG_TLS, "sending extension: Supported Groups for TLS 1.3");
 		extensions->write_uint16(extensions, TLS_EXT_SUPPORTED_GROUPS);
 		extensions->write_uint16(extensions, 4);
 		extensions->write_uint16(extensions, 2);
 		extensions->write_uint16(extensions, TLS_CURVE22519);
 	}
-	// TODO the following are hard-coded extensions
+
+	DBG2(DBG_TLS, "sending extension: Supported Versions");
+	nof_tls_versions = (version_max - version_min + 1)*2;
 	extensions->write_uint16(extensions, TLS_EXT_SUPPORTED_VERSIONS);
-	// TODO make that dynamic
-	extensions->write_uint16(extensions, 9);
-	extensions->write_uint8(extensions, 8);
-	// TODO don't define variable in for loop
-	for (int v = this->tls->get_version(this->tls); v >= TLS_1_0; v--)
+	extensions->write_uint16(extensions, nof_tls_versions+1);
+	extensions->write_uint8(extensions, nof_tls_versions);
+	for (v = version_max; v >= version_min; v--)
 	{
 		extensions->write_uint16(extensions, v);
+		nof_tls_versions += 2;
 	}
 
-	/* Commented out because the Client doesn't initiate sending of the Cookie
-	extensions->write_uint16(extensions, TLS_EXT_COOKIE);
-	extensions->write_uint16(extensions, 5);
-	extensions->write_uint16(extensions, 3);
-	extensions->write_uint16(extensions, 0xC0FF);
-	extensions->write_uint8(extensions, 0xEE);
-	*/
-
+	DBG2(DBG_TLS, "sending extension: Signature Algorithms");
     extensions->write_uint16(extensions, TLS_EXT_SIGNATURE_ALGORITHMS);
     this->crypto->get_signature_algorithms(this->crypto, extensions);
 
+	DBG2(DBG_TLS, "sending extension: Key Share");
 	if (!this->dh->get_my_public_value(this->dh, &pub))
 	{
 		this->alert->add(this->alert, TLS_FATAL, TLS_INTERNAL_ERROR);

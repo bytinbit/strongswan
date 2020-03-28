@@ -1136,7 +1136,7 @@ static bool create_null(private_tls_crypto_t *this, suite_algs_t *algs)
  */
 static bool create_traditional(private_tls_crypto_t *this, suite_algs_t *algs)
 {
-	if (this->tls->get_version(this->tls) < TLS_1_1)
+	if (this->tls->get_version_max(this->tls) < TLS_1_1)
 	{
 		this->aead_in = tls_aead_create_implicit(algs->mac,
 								algs->encr, algs->encr_size);
@@ -1193,7 +1193,7 @@ static bool create_ciphers(private_tls_crypto_t *this, suite_algs_t *algs)
 {
 	destroy_aeads(this);
 	DESTROY_IF(this->prf);
-	if (this->tls->get_version(this->tls) < TLS_1_2)
+	if (this->tls->get_version_max(this->tls) < TLS_1_2)
 	{
 		this->prf = tls_prf_create_10();
 	}
@@ -1433,7 +1433,7 @@ METHOD(tls_crypto_t, append_handshake, void,
  */
 static bool hash_data(private_tls_crypto_t *this, chunk_t data, chunk_t *hash)
 {
-	if (this->tls->get_version(this->tls) >= TLS_1_2)
+	if (this->tls->get_version_max(this->tls) >= TLS_1_2)
 	{
 		hasher_t *hasher;
 		suite_algs_t *alg;
@@ -1483,7 +1483,7 @@ METHOD(tls_crypto_t, sign, bool,
 	private_tls_crypto_t *this, private_key_t *key, bio_writer_t *writer,
 	chunk_t data, chunk_t hashsig)
 {
-	if (this->tls->get_version(this->tls) >= TLS_1_2)
+	if (this->tls->get_version_max(this->tls) >= TLS_1_2)
 	{
 		const chunk_t hashsig_def = chunk_from_chars(
 					TLS_HASH_SHA1, TLS_SIG_RSA, TLS_HASH_SHA1, TLS_SIG_ECDSA);
@@ -1566,7 +1566,7 @@ METHOD(tls_crypto_t, verify, bool,
 	private_tls_crypto_t *this, public_key_t *key, bio_reader_t *reader,
 	chunk_t data)
 {
-	if (this->tls->get_version(this->tls) >= TLS_1_2)
+	if (this->tls->get_version_max(this->tls) >= TLS_1_2)
 	{
 		signature_scheme_t scheme = SIGN_UNKNOWN;
 		uint8_t hash, alg;
@@ -1910,7 +1910,7 @@ tls_crypto_t *tls_crypto_create(tls_t *tls, tls_cache_t *cache)
 		}
 	}
 	enumerator->destroy(enumerator);
-	if (tls->get_version(tls) < TLS_1_3)
+	if (tls->get_version_max(tls) < TLS_1_3)
 	{
         this->sha224 = TRUE;
 	    this->md5 = TRUE;

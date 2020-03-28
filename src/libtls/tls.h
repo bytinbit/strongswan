@@ -140,10 +140,8 @@ enum tls_extension_t {
 	TLS_EXT_TRUNCATED_HMAC = 4,
 	/** list of OCSP responders the client trusts */
 	TLS_EXT_STATUS_REQUEST = 5,
-	/** list of supported elliptic curves */
-	// TODO: RENAMED TO supported_groups in TLS 1.3!
+	/** list of supported groups, in legacy tls: elliptic curves */
 	TLS_EXT_SUPPORTED_GROUPS = 10,
-
 	/** supported point formats */
 	TLS_EXT_EC_POINT_FORMATS = 11,
 	/** list supported signature algorithms */
@@ -249,11 +247,18 @@ struct tls_t {
 	identification_t* (*get_peer_id)(tls_t *this);
 
 	/**
-	 * Get the negotiated TLS/SSL version.
+	 * Get the maximum and negotiated TLS/SSL version.
 	 *
-	 * @return			negotiated TLS version
+	 * @return			max and negotiated TLS version
 	 */
-	tls_version_t (*get_version)(tls_t *this);
+	tls_version_t (*get_version_max)(tls_t *this);
+
+	/**
+	* Get the minimum TLS/SSL version.
+	*
+	* @return			min TLS version
+	*/
+	tls_version_t (*get_version_min)(tls_t *this);
 
 	/**
 	 * Set the negotiated TLS/SSL version.
