@@ -755,14 +755,14 @@ static status_t send_client_hello(private_tls_peer_t *this,
     this->dh = lib->crypto->create_dh(lib->crypto, CURVE_25519);
 
 
-	/* TLS version */
+	/* TLS version in Handshake Protocol */
 	version = this->tls->get_version(this->tls);
 	if (version < TLS_1_3) {
 		this->hello_version = version;
 	} else {
-		version = TLS_1_2;
+		this->hello_version = TLS_1_2;
 	}
-	writer->write_uint16(writer, version);
+	writer->write_uint16(writer, this->hello_version);
 	writer->write_data(writer, chunk_from_thing(this->client_random));
 
 	/* session identifier */
@@ -783,32 +783,7 @@ static status_t send_client_hello(private_tls_peer_t *this,
 
 	extensions = bio_writer_create(32);
 
-	// TLS 1.2 Extension
-	/* add supported Elliptic Curves, if any */
-	enumerator = this->crypto->create_ec_enumerator(this->crypto);
-	while (enumerator->enumerate(enumerator, NULL, &curve))
-	{
-		if (!curves)
-		{
-			extensions->write_uint16(extensions, TLS_EXT_SUPPORTED_GROUPS);
-			// elliptic_curves renamed in TLS 1.3 to supported_groups
-			curves = bio_writer_create(16);
-		}
-		curves->write_uint16(curves, curve);
-	}
-	enumerator->destroy(enumerator);
-	if (curves)
-	{
-		curves->wrap16(curves);
-		extensions->write_data16(extensions, curves->get_buf(curves));
-		curves->destroy(curves);
-
-		/* if we support curves, add point format extension */
-		extensions->write_uint16(extensions, TLS_EXT_EC_POINT_FORMATS);
-		extensions->write_uint16(extensions, 2);
-		extensions->write_uint8(extensions, 1);
-		extensions->write_uint8(extensions, TLS_EC_POINT_UNCOMPRESSED);
-	}
+	/* Extensions */
 	if (this->server->get_type(this->server) == ID_FQDN)
 	{
 		bio_writer_t *names;
@@ -824,6 +799,40 @@ static status_t send_client_hello(private_tls_peer_t *this,
 		names->destroy(names);
 	}
 
+	if (version < TLS_1_3)
+	{
+		/* add supported Elliptic Curves, if any */
+		enumerator = this->crypto->create_ec_enumerator(this->crypto);
+		while (enumerator->enumerate(enumerator, NULL, &curve))
+		{
+			if (!curves)
+			{
+				extensions->write_uint16(extensions, TLS_EXT_SUPPORTED_GROUPS);
+				curves = bio_writer_create(16);
+			}
+			curves->write_uint16(curves, curve);
+		}
+		enumerator->destroy(enumerator);
+		if (curves)
+		{
+			curves->wrap16(curves);
+			extensions->write_data16(extensions, curves->get_buf(curves));
+			curves->destroy(curves);
+
+			/* if we support curves, add point format extension */
+			extensions->write_uint16(extensions, TLS_EXT_EC_POINT_FORMATS);
+			extensions->write_uint16(extensions, 2);
+			extensions->write_uint8(extensions, 1);
+			extensions->write_uint8(extensions, TLS_EC_POINT_UNCOMPRESSED);
+		}
+	}
+	else  /* using TLS 1.3 */
+	{
+		extensions->write_uint16(extensions, TLS_EXT_SUPPORTED_GROUPS);
+		extensions->write_uint16(extensions, 4);
+		extensions->write_uint16(extensions, 2);
+		extensions->write_uint16(extensions, TLS_CURVE22519);
+	}
 	// TODO the following are hard-coded extensions
 	extensions->write_uint16(extensions, TLS_EXT_SUPPORTED_VERSIONS);
 	// TODO make that dynamic
@@ -860,16 +869,6 @@ static status_t send_client_hello(private_tls_peer_t *this,
 		extensions->write_uint16(extensions, 0x0201);
 	}
 
-	// negotiated groups = supported groups 10, 0x0A
-	// = used to be ELLIPTIC_CURVES in TLS 1.2, i.e. now supported groups" instead of "supported curves".
-	extensions->write_uint16(extensions, TLS_EXT_SUPPORTED_GROUPS);
-	extensions->write_uint16(extensions, 8);
-	extensions->write_uint16(extensions, 6);
-	extensions->write_uint16(extensions, 0x001D);
-	extensions->write_uint16(extensions, TLS_SECP384R1);
-	extensions->write_uint16(extensions, TLS_SECP521R1);
-
-
 	/* Extension: key_share */
 	if (!this->dh->get_my_public_value(this->dh, &pub))
 	{
@@ -879,7 +878,7 @@ static status_t send_client_hello(private_tls_peer_t *this,
 	extensions->write_uint16(extensions, TLS_EXT_KEY_SHARE);
 	extensions->write_uint16(extensions, 38);
 	extensions->write_uint16(extensions, 36);
-	extensions->write_uint16(extensions, 0x001D);  // new enum NamedGroup, RFC p. 47
+	extensions->write_uint16(extensions, TLS_CURVE22519);  // new enum NamedGroup, RFC p. 47
 	extensions->write_uint16(extensions, 32);
 	extensions->write_data(extensions, pub);
 	free(pub.ptr);
