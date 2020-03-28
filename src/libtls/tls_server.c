@@ -805,11 +805,11 @@ static status_t send_certificate_request(private_tls_server_t *this,
 /**
  * Get the TLS curve of a given EC DH group
  */
-static tls_named_curve_t ec_group_to_curve(private_tls_server_t *this,
-										   diffie_hellman_group_t group)
+static tls_named_group_t ec_group_to_curve(private_tls_server_t *this,
+                                           diffie_hellman_group_t group)
 {
 	diffie_hellman_group_t current;
-	tls_named_curve_t curve;
+	tls_named_group_t curve;
 	enumerator_t *enumerator;
 
 	enumerator = this->crypto->create_ec_enumerator(this->crypto);
@@ -828,7 +828,7 @@ static tls_named_curve_t ec_group_to_curve(private_tls_server_t *this,
 /**
  * Check if the peer supports a given TLS curve
  */
-bool peer_supports_curve(private_tls_server_t *this, tls_named_curve_t curve)
+bool peer_supports_curve(private_tls_server_t *this, tls_named_group_t curve)
 {
 	bio_reader_t *reader;
 	uint16_t current;
@@ -854,9 +854,9 @@ bool peer_supports_curve(private_tls_server_t *this, tls_named_curve_t curve)
  * Try to find a curve supported by both, client and server
  */
 static bool find_supported_curve(private_tls_server_t *this,
-								 tls_named_curve_t *curve)
+                                 tls_named_group_t *curve)
 {
-	tls_named_curve_t current;
+	tls_named_group_t current;
 	enumerator_t *enumerator;
 
 	enumerator = this->crypto->create_ec_enumerator(this->crypto);
@@ -881,7 +881,7 @@ static status_t send_server_key_exchange(private_tls_server_t *this,
 							diffie_hellman_group_t group)
 {
 	diffie_hellman_params_t *params = NULL;
-	tls_named_curve_t curve;
+	tls_named_group_t curve;
 	chunk_t chunk;
 
 	if (diffie_hellman_group_is_ec(group))
@@ -894,7 +894,7 @@ static status_t send_server_key_exchange(private_tls_server_t *this,
 			this->alert->add(this->alert, TLS_FATAL, TLS_HANDSHAKE_FAILURE);
 			return NEED_MORE;
 		}
-		DBG2(DBG_TLS, "selected ECDH group %N", tls_named_curve_names, curve);
+		DBG2(DBG_TLS, "selected ECDH group %N", tls_named_group_names, curve);
 		writer->write_uint8(writer, TLS_ECC_NAMED_CURVE);
 		writer->write_uint16(writer, curve);
 	}

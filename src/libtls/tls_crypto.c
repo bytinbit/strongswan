@@ -290,33 +290,45 @@ ENUM(tls_ecc_curve_type_names, TLS_ECC_EXPLICIT_PRIME, TLS_ECC_NAMED_CURVE,
 	"NAMED_CURVE",
 );
 
-ENUM(tls_named_curve_names, TLS_SECT163K1, TLS_SECP521R1,
-	"SECT163K1",
-	"SECT163R1",
-	"SECT163R2",
-	"SECT193R1",
-	"SECT193R2",
-	"SECT233K1",
-	"SECT233R1",
-	"SECT239K1",
-	"SECT283K1",
-	"SECT283R1",
-	"SECT409K1",
-	"SECT409R1",
-	"SECT571K1",
-	"SECT571R1",
-	"SECP160K1",
-	"SECP160R1",
-	"SECP160R2",
-	"SECP192K1",
-	"SECP192R1",
-	"SECP224K1",
-	"SECP224R1",
-	"SECP256K1",
-	"SECP256R1",
-	"SECP384R1",
-	"SECP521R1",
+ENUM_BEGIN(tls_named_group_names, TLS_SECT163K1, TLS_SECP521R1,
+     "SECT163K1",
+     "SECT163R1",
+     "SECT163R2",
+     "SECT193R1",
+     "SECT193R2",
+     "SECT233K1",
+     "SECT233R1",
+     "SECT239K1",
+     "SECT283K1",
+     "SECT283R1",
+     "SECT409K1",
+     "SECT409R1",
+     "SECT571K1",
+     "SECT571R1",
+     "SECP160K1",
+     "SECP160R1",
+     "SECP160R2",
+     "SECP192K1",
+     "SECP192R1",
+     "SECP224K1",
+     "SECP224R1",
+     "SECP256K1",
+     "SECP256R1",
+     "SECP384R1",
+     "SECP521R1",
 );
+ENUM_NEXT(tls_named_group_names, TLS_CURVE22519, TLS_CURVE_448, TLS_SECP521R1,
+	"CURVE25529",
+	"CURVE448",
+);
+ENUM_NEXT(tls_named_group_names, TLS_FFDHE2048, TLS_FFDHE8192, TLS_CURVE_448,
+	"FFDHE2048",
+	"FFDHE3072",
+	"FFDHE4096",
+	"FFDHE6144",
+	"FFDHE8192",
+);
+ENUM_END(tls_named_group_names, TLS_FFDHE8192);
 
 ENUM(tls_ansi_point_format_names, TLS_ANSI_COMPRESSED, TLS_ANSI_HYBRID_Y,
 	"compressed",
@@ -1333,7 +1345,7 @@ static signature_scheme_t hashsig_to_scheme(key_type_t type,
  */
 static struct {
 	diffie_hellman_group_t group;
-	tls_named_curve_t curve;
+	tls_named_group_t curve;
 } curves[] = {
 	{ ECP_256_BIT, TLS_SECP256R1},
 	{ ECP_384_BIT, TLS_SECP384R1},
@@ -1346,7 +1358,7 @@ CALLBACK(group_filter, bool,
 	void *null, enumerator_t *orig, va_list args)
 {
 	diffie_hellman_group_t group, *out;
-	tls_named_curve_t *curve;
+	tls_named_group_t *curve;
 	char *plugin;
 	int i;
 
