@@ -855,17 +855,16 @@ static status_t send_client_hello(private_tls_peer_t *this,
     extensions->write_uint16(extensions, TLS_EXT_SIGNATURE_ALGORITHMS);
     this->crypto->get_signature_algorithms(this->crypto, extensions);
 
-	/* Extension: key_share */
 	if (!this->dh->get_my_public_value(this->dh, &pub))
 	{
 		this->alert->add(this->alert, TLS_FATAL, TLS_INTERNAL_ERROR);
 		return NEED_MORE;
 	}
 	extensions->write_uint16(extensions, TLS_EXT_KEY_SHARE);
-	extensions->write_uint16(extensions, 38);
-	extensions->write_uint16(extensions, 36);
-	extensions->write_uint16(extensions, TLS_CURVE22519);  // new enum NamedGroup, RFC p. 47
-	extensions->write_uint16(extensions, 32);
+	extensions->write_uint16(extensions, pub.len+6);
+	extensions->write_uint16(extensions, pub.len+4);
+	extensions->write_uint16(extensions, TLS_CURVE22519);
+	extensions->write_uint16(extensions, pub.len);
 	extensions->write_data(extensions, pub);
 	free(pub.ptr);
 
