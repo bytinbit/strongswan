@@ -852,22 +852,8 @@ static status_t send_client_hello(private_tls_peer_t *this,
 	extensions->write_uint8(extensions, 0xEE);
 	*/
 
-	if (version < TLS_1_3)
-	{
-		extensions->write_uint16(extensions, TLS_EXT_SIGNATURE_ALGORITHMS);
-		this->crypto->get_signature_algorithms(this->crypto, extensions);
-	}
-	else {
-		extensions->write_uint16(extensions, TLS_EXT_SIGNATURE_ALGORITHMS);
-		extensions->write_uint16(extensions, 12);
-		extensions->write_uint16(extensions, 10);
-		// These are the values of the NEW enum SignatureScheme mentioned on p 42
-		extensions->write_uint16(extensions, 0x0401);
-		extensions->write_uint16(extensions, 0x0403);
-		extensions->write_uint16(extensions, 0x0804);
-		extensions->write_uint16(extensions, 0x0807);
-		extensions->write_uint16(extensions, 0x0201);
-	}
+    extensions->write_uint16(extensions, TLS_EXT_SIGNATURE_ALGORITHMS);
+    this->crypto->get_signature_algorithms(this->crypto, extensions);
 
 	/* Extension: key_share */
 	if (!this->dh->get_my_public_value(this->dh, &pub))

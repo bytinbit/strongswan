@@ -388,6 +388,16 @@ struct private_tls_crypto_t {
 	 */
 	bool ecdsa;
 
+    /**
+     * MD5 supported?
+     */
+    bool md5;
+
+    /**
+     * SHA224 supported?
+     */
+    bool sha224;
+
 	/**
 	 * TLS context
 	 */
@@ -1303,7 +1313,15 @@ METHOD(tls_crypto_t, get_signature_algorithms, void,
 		{
 			continue;
 		}
-		if (!lib->plugins->has_feature(lib->plugins,
+        if (schemes[i].hash == TLS_HASH_SHA224 && !this->sha224)
+        {
+        continue;
+        }
+        if (schemes[i].hash == TLS_HASH_MD5 && !this->md5)
+        {
+        continue;
+        }
+        if (!lib->plugins->has_feature(lib->plugins,
 						PLUGIN_PROVIDE(PUBKEY_VERIFY, schemes[i].scheme)))
 		{
 			continue;
@@ -1892,6 +1910,16 @@ tls_crypto_t *tls_crypto_create(tls_t *tls, tls_cache_t *cache)
 		}
 	}
 	enumerator->destroy(enumerator);
+	if (tls->get_version(tls) < TLS_1_3)
+	{
+        this->sha224 = TRUE;
+	    this->md5 = TRUE;
+	}
+	else
+    {
+        this->sha224 = FALSE;
+        this->md5 = FALSE;
+    }
 
 	switch (tls->get_purpose(tls))
 	{
