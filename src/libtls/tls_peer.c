@@ -407,10 +407,10 @@ static status_t process_modp_key_exchange(private_tls_peer_t *this,
  * Get the EC group for a TLS named curve
  */
 static diffie_hellman_group_t curve_to_ec_group(private_tls_peer_t *this,
-												tls_named_curve_t curve)
+                                                tls_named_group_t curve)
 {
 	diffie_hellman_group_t group;
-	tls_named_curve_t current;
+	tls_named_group_t current;
 	enumerator_t *enumerator;
 
 	enumerator = this->crypto->create_ec_enumerator(this->crypto);
@@ -464,7 +464,7 @@ static status_t process_ec_key_exchange(private_tls_peer_t *this,
 	if (!group)
 	{
 		DBG1(DBG_TLS, "ECDH curve %N not supported",
-			 tls_named_curve_names, curve);
+		     tls_named_group_names, curve);
 		this->alert->add(this->alert, TLS_FATAL, TLS_HANDSHAKE_FAILURE);
 		return NEED_MORE;
 	}
@@ -732,7 +732,7 @@ static status_t send_client_hello(private_tls_peer_t *this,
 	tls_cipher_suite_t *suites;
 	bio_writer_t *extensions, *curves = NULL;
 	tls_version_t version;
-	tls_named_curve_t curve;
+	tls_named_group_t curve;
 	enumerator_t *enumerator;
 	int count, i;
 	rng_t *rng;
@@ -781,13 +781,9 @@ static status_t send_client_hello(private_tls_peer_t *this,
 	writer->write_uint8(writer, 1);
 	writer->write_uint8(writer, 0);
 
-	// TODO why 32 byte?
 	extensions = bio_writer_create(32);
 
-	// FIXME: commented out to enable new TLS 1.3 extension by the same name
-	// extensions->write_uint16(extensions, TLS_EXT_SIGNATURE_ALGORITHMS);
-	// this->crypto->get_signature_algorithms(this->crypto, extensions);
-
+	// TLS 1.2 Extension
 	/* add supported Elliptic Curves, if any */
 	enumerator = this->crypto->create_ec_enumerator(this->crypto);
 	while (enumerator->enumerate(enumerator, NULL, &curve))
@@ -827,27 +823,32 @@ static status_t send_client_hello(private_tls_peer_t *this,
 		extensions->write_data16(extensions, names->get_buf(names));
 		names->destroy(names);
 	}
-	if (this->tls->get_version(this->tls) == TLS_1_3)
+
+	// TODO the following are hard-coded extensions
+	extensions->write_uint16(extensions, TLS_EXT_SUPPORTED_VERSIONS);
+	// TODO make that dynamic
+	extensions->write_uint16(extensions, 9);
+	extensions->write_uint8(extensions, 8);
+	// TODO don't define variable in for loop
+	for (int v = this->tls->get_version(this->tls); v >= TLS_1_0; v--)
 	{
-		// TODO the following are hard-coded extensions
-		extensions->write_uint16(extensions, TLS_EXT_SUPPORTED_VERSIONS);
-		// TODO make that dynamic
-		extensions->write_uint16(extensions, 9);
-		extensions->write_uint8(extensions, 8);
-		// TODO don't define variable in for loop
-		for (int v = this->tls->get_version(this->tls); v >= TLS_1_0; v--)
-		{
-			extensions->write_uint16(extensions, v);
-		}
+		extensions->write_uint16(extensions, v);
+	}
 
-		/* Commented out because the Client doesn't initiate sending of the Cookie
-		extensions->write_uint16(extensions, TLS_EXT_COOKIE);
-		extensions->write_uint16(extensions, 5);
-		extensions->write_uint16(extensions, 3);
-		extensions->write_uint16(extensions, 0xC0FF);
-		extensions->write_uint8(extensions, 0xEE);
-		*/
+	/* Commented out because the Client doesn't initiate sending of the Cookie
+	extensions->write_uint16(extensions, TLS_EXT_COOKIE);
+	extensions->write_uint16(extensions, 5);
+	extensions->write_uint16(extensions, 3);
+	extensions->write_uint16(extensions, 0xC0FF);
+	extensions->write_uint8(extensions, 0xEE);
+	*/
 
+	if (version < TLS_1_3)
+	{
+		extensions->write_uint16(extensions, TLS_EXT_SIGNATURE_ALGORITHMS);
+		this->crypto->get_signature_algorithms(this->crypto, extensions);
+	}
+	else {
 		extensions->write_uint16(extensions, TLS_EXT_SIGNATURE_ALGORITHMS);
 		extensions->write_uint16(extensions, 12);
 		extensions->write_uint16(extensions, 10);
@@ -857,31 +858,31 @@ static status_t send_client_hello(private_tls_peer_t *this,
 		extensions->write_uint16(extensions, 0x0804);
 		extensions->write_uint16(extensions, 0x0807);
 		extensions->write_uint16(extensions, 0x0201);
-
-		// negotiated groups = supported groups 10, 0x0A
-		// = used to be ELLIPTIC_CURVES in TLS 1.2, i.e. now supported groups" instead of "supported curves".
-		extensions->write_uint16(extensions, TLS_EXT_SUPPORTED_GROUPS);
-		extensions->write_uint16(extensions, 8);
-		extensions->write_uint16(extensions, 6);
-		extensions->write_uint16(extensions, 0x001D);
-		extensions->write_uint16(extensions, TLS_SECP384R1);
-		extensions->write_uint16(extensions, TLS_SECP521R1);
-
-
-		/* Extension: key_share */
-		if (!this->dh->get_my_public_value(this->dh, &pub))
-		{
-			this->alert->add(this->alert, TLS_FATAL, TLS_INTERNAL_ERROR);
-			return NEED_MORE;
-		}
-		extensions->write_uint16(extensions, TLS_EXT_KEY_SHARE);
-		extensions->write_uint16(extensions, 38);
-		extensions->write_uint16(extensions, 36);
-		extensions->write_uint16(extensions, 0x001D);  // new enum NamedGroup, RFC p. 47
-		extensions->write_uint16(extensions, 32);
-		extensions->write_data(extensions, pub);
-		free(pub.ptr);
 	}
+
+	// negotiated groups = supported groups 10, 0x0A
+	// = used to be ELLIPTIC_CURVES in TLS 1.2, i.e. now supported groups" instead of "supported curves".
+	extensions->write_uint16(extensions, TLS_EXT_SUPPORTED_GROUPS);
+	extensions->write_uint16(extensions, 8);
+	extensions->write_uint16(extensions, 6);
+	extensions->write_uint16(extensions, 0x001D);
+	extensions->write_uint16(extensions, TLS_SECP384R1);
+	extensions->write_uint16(extensions, TLS_SECP521R1);
+
+
+	/* Extension: key_share */
+	if (!this->dh->get_my_public_value(this->dh, &pub))
+	{
+		this->alert->add(this->alert, TLS_FATAL, TLS_INTERNAL_ERROR);
+		return NEED_MORE;
+	}
+	extensions->write_uint16(extensions, TLS_EXT_KEY_SHARE);
+	extensions->write_uint16(extensions, 38);
+	extensions->write_uint16(extensions, 36);
+	extensions->write_uint16(extensions, 0x001D);  // new enum NamedGroup, RFC p. 47
+	extensions->write_uint16(extensions, 32);
+	extensions->write_data(extensions, pub);
+	free(pub.ptr);
 
 	writer->write_data16(writer, extensions->get_buf(extensions));
 	extensions->destroy(extensions);

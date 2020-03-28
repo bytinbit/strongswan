@@ -27,7 +27,7 @@ typedef enum tls_hash_algorithm_t tls_hash_algorithm_t;
 typedef enum tls_signature_algorithm_t tls_signature_algorithm_t;
 typedef enum tls_client_certificate_type_t tls_client_certificate_type_t;
 typedef enum tls_ecc_curve_type_t tls_ecc_curve_type_t;
-typedef enum tls_named_curve_t tls_named_curve_t;
+typedef enum tls_named_group_t tls_named_group_t;
 typedef enum tls_ansi_point_format_t tls_ansi_point_format_t;
 typedef enum tls_ec_point_format_t tls_ec_point_format_t;
 
@@ -333,7 +333,7 @@ extern enum_name_t *tls_ecc_curve_type_names;
 /**
  * TLS Named Curve identifiers
  */
-enum tls_named_curve_t {
+enum tls_named_group_t {
 	// TODO rename to named_group and add missing values
 	// These values are used/named in MODP_
 	TLS_SECT163K1 =		 1,
@@ -361,12 +361,21 @@ enum tls_named_curve_t {
 	TLS_SECP256R1 =		23,
 	TLS_SECP384R1 =		24,
 	TLS_SECP521R1 =		25,
+
+	/* TLS 1.3: new ecdhe, dhe groups */
+	TLS_CURVE22519 =    31,
+	TLS_CURVE_448  =    32,
+	TLS_FFDHE2048  =    256,
+	TLS_FFDHE3072  =    257,
+	TLS_FFDHE4096  =    258,
+	TLS_FFDHE6144  =    259,
+	TLS_FFDHE8192  =    260,
 };
 
 /**
- * Enum names for tls_named_curve_t
+ * Enum names for tls_named_group_t
  */
-extern enum_name_t *tls_named_curve_names;
+extern enum_name_t *tls_named_group_names;
 
 /**
  * EC Point format, ANSI X9.62.
@@ -440,7 +449,7 @@ struct tls_crypto_t {
 	/**
 	 * Create an enumerator over supported ECDH groups.
 	 *
-	 * Enumerates over (diffie_hellman_group_t, tls_named_curve_t)
+	 * Enumerates over (diffie_hellman_group_t, tls_named_group_t)
 	 *
 	 * @return				enumerator
 	 */
