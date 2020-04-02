@@ -55,7 +55,8 @@ ENUM_NEXT(tls_handshake_type_names,
 	"HelloRetryRequest",
 );
 ENUM_NEXT(tls_handshake_type_names,
-		TLS_ENCRYPTED_EXTENSIONS, TLS_ENCRYPTED_EXTENSIONS, TLS_HELLO_REQUEST,
+	    TLS_ENCRYPTED_EXTENSIONS, TLS_ENCRYPTED_EXTENSIONS,
+		TLS_HELLO_RETRY_REQUEST,
 		"EncryptedExtensions",
 );
 ENUM_NEXT(tls_handshake_type_names,
