@@ -68,7 +68,7 @@ any type. Keys are directly attached to the message dictionary.
 On the Mach service connection, the following RPC messages are currently
 defined:
 
-* string version = get_version_max()
+* string version = get_version()
 	* _version_: strongSwan version of charon-xpc
 * bool success = start_connection(string name, string host, string id,
 								  endpoint channel)

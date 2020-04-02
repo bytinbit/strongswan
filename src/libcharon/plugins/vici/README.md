@@ -1053,7 +1053,7 @@ then perform proper cleanup:
 In the following example, a simple _version_ request is issued to the daemon
 and the result is printed:
 
-	int get_version_max(vici_conn_t *conn)
+	int get_version(vici_conn_t *conn)
 	{
 		vici_req_t *req;
 		vici_res_t *res;
