@@ -1945,7 +1945,7 @@ tls_crypto_t *tls_crypto_create(tls_t *tls, tls_cache_t *cache)
 	enumerator_t *enumerator;
 	credential_type_t type;
 	int subtype;
-    hash_algorithm_t *hash_algorithm;
+    int hash_algorithm;
     const char *plugin;
 
 	INIT(this,
@@ -1996,7 +1996,7 @@ tls_crypto_t *tls_crypto_create(tls_t *tls, tls_cache_t *cache)
 	enumerator = lib->crypto->create_hasher_enumerator(lib->crypto);
     while (enumerator->enumerate(enumerator, &hash_algorithm, &plugin))
     {
-        switch ((int) hash_algorithm)
+        switch (hash_algorithm)
         {
             case TLS_HASH_MD5:
                 if (tls->get_version_max(tls) < TLS_1_3)
