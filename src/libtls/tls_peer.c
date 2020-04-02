@@ -160,8 +160,30 @@ static status_t process_server_hello(private_tls_peer_t *this,
 		this->alert->add(this->alert, TLS_FATAL, TLS_DECODE_ERROR);
 		return NEED_MORE;
 	}
-
 	memcpy(this->server_random, random.ptr, sizeof(this->server_random));
+
+
+	int offset = 0;
+	uint16_t extension_type, extension_length;
+	bio_reader_t *extension_reader = bio_reader_create(ext);
+	chunk_t dummy = chunk_empty;
+
+	/* parse extension to decide which tls version of the state machine we want to go*/
+	while (offset < ext.len)
+	{
+		reader->read_uint16(extension_reader, &extension_type);
+		reader->read_uint16(extension_reader, &extension_length);
+		printf("extension_type, 0x%X, dec: %d\n", extension_type, extension_type);
+		printf("extension_type, 0x%X, dec: %d\n", extension_length, extension_length);
+		reader->read_data(extension_reader, extension_length, &dummy);
+		offset += extension_length + 4;
+	}
+	/* MAKE VERSION CHECK HERE ACCORDING TO EXTENSION
+	 * does TLS_EXT_SUPPORTED_VERSIONS exist?
+	 * if no => TLS legacy state machine
+	 * it yes => maxversion TLS 1.3?
+	 *           yes => go down new state machine, else go down legacy path
+	 *           * */
 
 	if (!this->tls->set_version(this->tls, version))
 	{
@@ -665,7 +687,6 @@ METHOD(tls_handshake_t, process, status_t,
 	private_tls_peer_t *this, tls_handshake_type_t type, bio_reader_t *reader)
 {
 	tls_handshake_type_t expected;
-
 	switch (this->state)
 	{
 		case STATE_HELLO_SENT:
@@ -704,6 +725,9 @@ METHOD(tls_handshake_t, process, status_t,
 			}
 			expected = TLS_SERVER_HELLO_DONE;
 			break;
+
+
+
 		case STATE_CIPHERSPEC_CHANGED_IN:
 			if (type == TLS_FINISHED)
 			{
@@ -713,7 +737,7 @@ METHOD(tls_handshake_t, process, status_t,
 			break;
 		default:
 			DBG1(DBG_TLS, "TLS %N not expected in current state",
-				 tls_handshake_type_names, type);
+			     tls_handshake_type_names, type);
 			this->alert->add(this->alert, TLS_FATAL, TLS_UNEXPECTED_MESSAGE);
 			return NEED_MORE;
 	}
@@ -851,6 +875,17 @@ static status_t send_client_hello(private_tls_peer_t *this,
 	DBG2(DBG_TLS, "sending extension: Signature Algorithms");
     extensions->write_uint16(extensions, TLS_EXT_SIGNATURE_ALGORITHMS);
     this->crypto->get_signature_algorithms(this->crypto, extensions);
+    /* TODO TLS 1.3 openssl server crashes with above code, workaround:
+
+	extensions->write_uint16(extensions, TLS_EXT_SIGNATURE_ALGORITHMS);
+	extensions->write_uint16(extensions, 12);
+	extensions->write_uint16(extensions, 10);
+	extensions->write_uint16(extensions, 0x0401);
+	extensions->write_uint16(extensions, 0x0403);
+	extensions->write_uint16(extensions, 0x0804);
+	extensions->write_uint16(extensions, 0x0807);
+	extensions->write_uint16(extensions, 0x0201);
+	*/
 
 	DBG2(DBG_TLS, "sending extension: Key Share");
 	if (!this->dh->get_my_public_value(this->dh, &pub))
