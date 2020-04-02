@@ -394,11 +394,31 @@ struct private_tls_crypto_t {
     bool md5;
 
     /**
+     * SHA1 supported?
+     */
+    bool sha1;
+    /**
      * SHA224 supported?
      */
     bool sha224;
 
-	/**
+    /**
+     * SHA256 supported?
+     */
+    bool sha256;
+
+    /**
+     * SHA384 supported?
+     */
+    bool sha384;
+
+    /**
+     * SHA512 supported?
+     */
+    bool sha512;
+
+
+    /**
 	 * TLS context
 	 */
 	tls_t *tls;
@@ -1313,13 +1333,29 @@ METHOD(tls_crypto_t, get_signature_algorithms, void,
 		{
 			continue;
 		}
-        if (schemes[i].hash == TLS_HASH_SHA224 && !this->sha224)
-        {
-        continue;
-        }
         if (schemes[i].hash == TLS_HASH_MD5 && !this->md5)
         {
-        continue;
+            continue;
+        }
+        if (schemes[i].hash == TLS_HASH_SHA1 && !this->sha1)
+        {
+            continue;
+        }
+        if (schemes[i].hash == TLS_HASH_SHA224 && !this->sha224)
+        {
+            continue;
+        }
+        if (schemes[i].hash == TLS_HASH_SHA256 && !this->sha256)
+        {
+            continue;
+        }
+        if (schemes[i].hash == TLS_HASH_SHA384 && !this->sha384)
+        {
+            continue;
+        }
+        if (schemes[i].hash == TLS_HASH_SHA512 && !this->sha512)
+        {
+            continue;
         }
         if (!lib->plugins->has_feature(lib->plugins,
 						PLUGIN_PROVIDE(PUBKEY_VERIFY, schemes[i].scheme)))
@@ -1865,6 +1901,8 @@ tls_crypto_t *tls_crypto_create(tls_t *tls, tls_cache_t *cache)
 	enumerator_t *enumerator;
 	credential_type_t type;
 	int subtype;
+    hash_algorithm_t *hash_algorithm;
+    const char *plugin;
 
 	INIT(this,
 		.public = {
@@ -1910,16 +1948,49 @@ tls_crypto_t *tls_crypto_create(tls_t *tls, tls_cache_t *cache)
 		}
 	}
 	enumerator->destroy(enumerator);
-	if (tls->get_version_max(tls) < TLS_1_3)
-	{
-        this->sha224 = TRUE;
-	    this->md5 = TRUE;
-	}
-	else
+
+	enumerator = lib->crypto->create_hasher_enumerator(lib->crypto);
+    while (enumerator->enumerate(enumerator, &hash_algorithm, &plugin))
     {
-        this->sha224 = FALSE;
-        this->md5 = FALSE;
+        switch ((int) hash_algorithm)
+        {
+            case TLS_HASH_MD5:
+                if (tls->get_version_max(tls) < TLS_1_3)
+                {
+                    this->md5 = TRUE;
+                }
+                else
+                {
+                    this->md5 = FALSE;
+                }
+                break;
+            case TLS_HASH_SHA1:
+                this->sha1 = TRUE;
+                break;
+            case TLS_HASH_SHA224:
+                if (tls->get_version_max(tls) < TLS_1_3)
+                {
+                    this->sha224 = TRUE;
+                }
+                else
+                {
+                    this->sha224 = FALSE;
+                }
+                break;
+            case TLS_HASH_SHA384:
+                this->sha384 = TRUE;
+                break;
+            case TLS_HASH_SHA256:
+                this->sha256 = TRUE;
+                break;
+            case TLS_HASH_SHA512:
+                this->sha512 = TRUE;
+                break;
+            default:
+                continue;
+        }
     }
+    enumerator->destroy(enumerator);
 
 	switch (tls->get_purpose(tls))
 	{
