@@ -145,6 +145,9 @@ static status_t process_server_hello(private_tls_peer_t *this,
 	uint16_t version, cipher;
 	chunk_t random, session, ext = chunk_empty, ext_key_share = chunk_empty;
 	tls_cipher_suite_t suite = 0;
+	int offset = 0;
+	uint16_t extension_type, extension_length;
+	uint16_t key_type, key_length;
 
 	this->crypto->append_handshake(this->crypto,
 								   TLS_SERVER_HELLO, reader->peek(reader));
@@ -162,8 +165,6 @@ static status_t process_server_hello(private_tls_peer_t *this,
 	}
 	memcpy(this->server_random, random.ptr, sizeof(this->server_random));
 
-	int offset = 0;
-	uint16_t extension_type, extension_length;
 	bio_reader_t *extension_reader = bio_reader_create(ext);
 
 	/* parse extension to decide which tls version of the state machine we want to go*/
@@ -184,33 +185,33 @@ static status_t process_server_hello(private_tls_peer_t *this,
 
 		bio_reader_t *ext_payload_reader = bio_reader_create(extension_payload);
 
-		if (extension_type == TLS_EXT_SUPPORTED_VERSIONS)
+		switch (extension_type)
 		{
-			ext_payload_reader->read_uint16(ext_payload_reader, &version);
-			continue;
+			case TLS_EXT_SUPPORTED_VERSIONS:
+				ext_payload_reader->read_uint16(ext_payload_reader, &version);
+				break;
+
+			case TLS_EXT_KEY_SHARE:
+				ext_payload_reader->read_uint16(ext_payload_reader, &key_type);
+				ext_payload_reader->read_uint16(ext_payload_reader, &key_length);
+				if (!ext_payload_reader->read_data(ext_payload_reader,
+				                                   key_length,
+				                                   &ext_key_share))
+				{
+					DBG2(DBG_TLS, "no valid key share found in extension");
+				}
+
+				if(key_type != TLS_CURVE25519 && !this->dh->set_other_public_value(this->dh, ext_key_share))
+				{
+					DBG2(DBG_TLS, "server key share unable to save");
+				}
+				break;
+			default:
+				continue;
 		}
-
-		if (extension_type == TLS_EXT_KEY_SHARE)
-		{
-			uint16_t key_type;
-			uint16_t key_length;
-			/* TODO check if key_type is equal to client key_type in crypto_factory */
-			ext_payload_reader->read_uint16(ext_payload_reader, &key_type);
-			ext_payload_reader->read_uint16(ext_payload_reader, &key_length);
-
-			if (!ext_payload_reader->read_data(ext_payload_reader,
-											   key_length,
-											   &ext_key_share))
-			{
-				DBG2(DBG_TLS, "no valid key share found");
-			}
-
-			continue;
-		}
-
-		/* TODO */
-		//free(extension_payload.ptr);
+		ext_payload_reader->destroy(ext_payload_reader);
 	}
+	extension_reader->destroy(extension_reader);
 
 	if (!this->tls->set_version(this->tls, version))
 	{
