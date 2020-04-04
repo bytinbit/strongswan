@@ -317,7 +317,7 @@ ENUM_BEGIN(tls_named_group_names, TLS_SECT163K1, TLS_SECP521R1,
      "SECP384R1",
      "SECP521R1",
 );
-ENUM_NEXT(tls_named_group_names, TLS_CURVE22519, TLS_CURVE_448, TLS_SECP521R1,
+ENUM_NEXT(tls_named_group_names, TLS_CURVE25519, TLS_CURVE_448, TLS_SECP521R1,
 	"CURVE25529",
 	"CURVE448",
 );
@@ -1257,19 +1257,26 @@ static bool create_ciphers(private_tls_crypto_t *this, suite_algs_t *algs)
 {
 	destroy_aeads(this);
 	DESTROY_IF(this->prf);
-	if (this->tls->get_version_max(this->tls) < TLS_1_2)
-	{
-		this->prf = tls_prf_create_10();
-	}
+	if (this->tls->get_version_max(this->tls) < TLS_1_3)
+    {
+        if (this->tls->get_version_max(this->tls) < TLS_1_2)
+        {
+            this->prf = tls_prf_create_10();
+        }
+        else
+        {
+            this->prf = tls_prf_create_12(algs->prf);
+        }
+        if (!this->prf)
+        {
+            DBG1(DBG_TLS, "selected TLS PRF not supported");
+            return FALSE;
+        }
+    }
 	else
-	{
-		this->prf = tls_prf_create_12(algs->prf);
-	}
-	if (!this->prf)
-	{
-		DBG1(DBG_TLS, "selected TLS PRF not supported");
-		return FALSE;
-	}
+    {
+	    /* TODO handle HKDF in TLS 1.3 */
+    }
 	if (algs->encr == ENCR_NULL)
 	{
 		if (create_null(this, algs))
