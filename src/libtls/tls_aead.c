@@ -204,7 +204,6 @@ tls_aead_t *tls_aead_create_aead(encryption_algorithm_t encr, size_t encr_size)
 
 	if (!this->aead)
 	{
-	    /* TODO we have a problem here */
 		free(this);
 		return NULL;
 	}
