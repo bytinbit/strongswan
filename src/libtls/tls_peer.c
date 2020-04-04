@@ -143,7 +143,7 @@ static status_t process_server_hello(private_tls_peer_t *this,
 {
 	uint8_t compression;
 	uint16_t version, cipher;
-	chunk_t random, session, ext = chunk_empty;
+	chunk_t random, session, ext = chunk_empty, ext_key_share = chunk_empty;
 	tls_cipher_suite_t suite = 0;
 
 	this->crypto->append_handshake(this->crypto,
@@ -162,21 +162,54 @@ static status_t process_server_hello(private_tls_peer_t *this,
 	}
 	memcpy(this->server_random, random.ptr, sizeof(this->server_random));
 
-
 	int offset = 0;
 	uint16_t extension_type, extension_length;
 	bio_reader_t *extension_reader = bio_reader_create(ext);
-	chunk_t dummy = chunk_empty;
 
 	/* parse extension to decide which tls version of the state machine we want to go*/
 	while (offset < ext.len)
 	{
-		reader->read_uint16(extension_reader, &extension_type);
-		reader->read_uint16(extension_reader, &extension_length);
-		printf("extension_type, 0x%X, dec: %d\n", extension_type, extension_type);
-		printf("extension_type, 0x%X, dec: %d\n", extension_length, extension_length);
-		reader->read_data(extension_reader, extension_length, &dummy);
+		chunk_t extension_payload = chunk_empty;
+
+		extension_reader->read_uint16(extension_reader, &extension_type);
+		extension_reader->read_uint16(extension_reader, &extension_length);
 		offset += extension_length + 4;
+
+		if (!extension_reader->read_data(extension_reader,
+										 extension_length,
+										 &extension_payload))
+		{
+			DBG2(DBG_TLS, "unable to read extension payload data");
+		}
+
+		bio_reader_t *ext_payload_reader = bio_reader_create(extension_payload);
+
+		if (extension_type == TLS_EXT_SUPPORTED_VERSIONS)
+		{
+			ext_payload_reader->read_uint16(ext_payload_reader, &version);
+			continue;
+		}
+
+		if (extension_type == TLS_EXT_KEY_SHARE)
+		{
+			uint16_t key_type;
+			uint16_t key_length;
+			/* TODO check if key_type is equal to client key_type in cryto_factory */
+			ext_payload_reader->read_uint16(ext_payload_reader, &key_type);
+			ext_payload_reader->read_uint16(ext_payload_reader, &key_length);
+
+			if (!ext_payload_reader->read_data(ext_payload_reader,
+											   key_length,
+											   &ext_key_share))
+			{
+				DBG2(DBG_TLS, "no valid key share found");
+			}
+
+			continue;
+		}
+
+		/* TODO */
+		//free(extension_payload.ptr);
 	}
 	/* MAKE VERSION CHECK HERE ACCORDING TO EXTENSION
 	 * does TLS_EXT_SUPPORTED_VERSIONS exist?
@@ -193,6 +226,7 @@ static status_t process_server_hello(private_tls_peer_t *this,
 		return NEED_MORE;
 	}
 
+	/* TODO only relevant to TLS legacy */
 	if (chunk_equals(this->session, session))
 	{
 		suite = this->crypto->resume_session(this->crypto, session, this->server,
@@ -783,9 +817,12 @@ static status_t send_client_hello(private_tls_peer_t *this,
 	/* TLS version_max in Handshake Protocol */
 	version_max = this->tls->get_version_max(this->tls);
 	version_min = this->tls->get_version_min(this->tls);
-	if (version_max < TLS_1_3) {
+	if (version_max < TLS_1_3)
+	{
 		this->hello_version = version_max;
-	} else {
+	}
+	else
+	{
 		this->hello_version = TLS_1_2;
 	}
 	writer->write_uint16(writer, this->hello_version);
@@ -858,7 +895,7 @@ static status_t send_client_hello(private_tls_peer_t *this,
 		extensions->write_uint16(extensions, TLS_EXT_SUPPORTED_GROUPS);
 		extensions->write_uint16(extensions, 4);
 		extensions->write_uint16(extensions, 2);
-		extensions->write_uint16(extensions, TLS_CURVE22519);
+		extensions->write_uint16(extensions, TLS_CURVE25519);
 	}
 
 	DBG2(DBG_TLS, "sending extension: Supported Versions");
@@ -873,19 +910,8 @@ static status_t send_client_hello(private_tls_peer_t *this,
 	}
 
 	DBG2(DBG_TLS, "sending extension: Signature Algorithms");
-    extensions->write_uint16(extensions, TLS_EXT_SIGNATURE_ALGORITHMS);
-    this->crypto->get_signature_algorithms(this->crypto, extensions);
-    /* TODO TLS 1.3 openssl server crashes with above code, workaround:
-
 	extensions->write_uint16(extensions, TLS_EXT_SIGNATURE_ALGORITHMS);
-	extensions->write_uint16(extensions, 12);
-	extensions->write_uint16(extensions, 10);
-	extensions->write_uint16(extensions, 0x0401);
-	extensions->write_uint16(extensions, 0x0403);
-	extensions->write_uint16(extensions, 0x0804);
-	extensions->write_uint16(extensions, 0x0807);
-	extensions->write_uint16(extensions, 0x0201);
-	*/
+	this->crypto->get_signature_algorithms(this->crypto, extensions);
 
 	DBG2(DBG_TLS, "sending extension: Key Share");
 	if (!this->dh->get_my_public_value(this->dh, &pub))
@@ -896,7 +922,7 @@ static status_t send_client_hello(private_tls_peer_t *this,
 	extensions->write_uint16(extensions, TLS_EXT_KEY_SHARE);
 	extensions->write_uint16(extensions, pub.len+6);
 	extensions->write_uint16(extensions, pub.len+4);
-	extensions->write_uint16(extensions, TLS_CURVE22519);
+	extensions->write_uint16(extensions, TLS_CURVE25519);
 	extensions->write_uint16(extensions, pub.len);
 	extensions->write_data(extensions, pub);
 	free(pub.ptr);
