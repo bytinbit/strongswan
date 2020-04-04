@@ -194,7 +194,7 @@ static status_t process_server_hello(private_tls_peer_t *this,
 		{
 			uint16_t key_type;
 			uint16_t key_length;
-			/* TODO check if key_type is equal to client key_type in cryto_factory */
+			/* TODO check if key_type is equal to client key_type in crypto_factory */
 			ext_payload_reader->read_uint16(ext_payload_reader, &key_type);
 			ext_payload_reader->read_uint16(ext_payload_reader, &key_length);
 
@@ -211,12 +211,6 @@ static status_t process_server_hello(private_tls_peer_t *this,
 		/* TODO */
 		//free(extension_payload.ptr);
 	}
-	/* MAKE VERSION CHECK HERE ACCORDING TO EXTENSION
-	 * does TLS_EXT_SUPPORTED_VERSIONS exist?
-	 * if no => TLS legacy state machine
-	 * it yes => maxversion TLS 1.3?
-	 *           yes => go down new state machine, else go down legacy path
-	 *           * */
 
 	if (!this->tls->set_version(this->tls, version))
 	{
@@ -226,19 +220,22 @@ static status_t process_server_hello(private_tls_peer_t *this,
 		return NEED_MORE;
 	}
 
-	/* TODO only relevant to TLS legacy */
-	if (chunk_equals(this->session, session))
+	if (this->tls->get_version_max(this->tls) < TLS_1_3)
 	{
-		suite = this->crypto->resume_session(this->crypto, session, this->server,
-										chunk_from_thing(this->client_random),
-										chunk_from_thing(this->server_random));
-		if (suite)
+		if (chunk_equals(this->session, session))
 		{
-			DBG1(DBG_TLS, "resumed %N using suite %N",
-				 tls_version_names, version, tls_cipher_suite_names, suite);
-			this->resume = TRUE;
+			suite = this->crypto->resume_session(this->crypto, session, this->server,
+			                                     chunk_from_thing(this->client_random),
+			                                     chunk_from_thing(this->server_random));
+			if (suite)
+			{
+				DBG1(DBG_TLS, "resumed %N using suite %N",
+				     tls_version_names, version, tls_cipher_suite_names, suite);
+				this->resume = TRUE;
+			}
 		}
 	}
+
 	if (!suite)
 	{
 		suite = cipher;
