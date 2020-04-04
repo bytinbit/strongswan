@@ -1106,7 +1106,7 @@ static void filter_specific_config_suites(private_tls_crypto_t *this,
 static void filter_unsupported_suites(suite_algs_t suites[], int *count)
 {
 	/* filter suite list by each algorithm */
-	if (suites->tls_version == TLS_1_2)
+	if (suites->tls_version < TLS_1_3)
 	{
 		filter_suite(suites, count, offsetof(suite_algs_t, encr),
 		             lib->crypto->create_aead_enumerator);
@@ -1151,7 +1151,6 @@ static void build_cipher_suite_list(private_tls_crypto_t *this,
 		filter_key_suites(this, suites, &count, KEY_ECDSA);
 	}
 
-	// TODO filters our cs
 	filter_unsupported_suites(suites, &count);
 
 	/* filter suites with strongswan.conf options */
