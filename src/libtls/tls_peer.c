@@ -25,7 +25,7 @@ typedef struct private_tls_peer_t private_tls_peer_t;
 typedef enum {
 	STATE_INIT,
 	STATE_HELLO_SENT,
-	STATE_HELLO_RECEIVED,
+	STATE_HELLO_TLS12_RECEIVED,
 	STATE_HELLO_DONE,
 	STATE_CERT_SENT,
 	STATE_CERT_RECEIVED,
@@ -37,6 +37,12 @@ typedef enum {
 	STATE_FINISHED_SENT,
 	STATE_CIPHERSPEC_CHANGED_IN,
 	STATE_FINISHED_RECEIVED,
+
+	/* new states in TLS 1.3 */
+	STATE_HELLORETRYREQ_RECEIVED,
+	STATE_HELLO_TLS13_RECEIVED,
+	STATE_ENCRYPTED_EXTENSIONS_RECEIVED,
+
 } peer_state_t;
 
 /**
@@ -252,10 +258,26 @@ static status_t process_server_hello(private_tls_peer_t *this,
 		free(this->session.ptr);
 		this->session = chunk_clone(session);
 	}
-	this->state = STATE_HELLO_RECEIVED;
+	if (version < TLS_1_3)
+	{
+		this->state = STATE_HELLO_TLS12_RECEIVED;
+	}
+	else
+	{
+		this->state = STATE_HELLO_TLS13_RECEIVED;
+	}
+
 	return NEED_MORE;
 }
 
+/**
+* Process a server encrypted extensions message
+*/
+static process_encrypted_extensions(private_tls_peer_t *this,
+                             bio_reader_t *reader)
+{
+	return 0;
+}
 /**
  * Check if a server certificate is acceptable for the given server identity
  */
@@ -718,7 +740,7 @@ static status_t process_finished(private_tls_peer_t *this, bio_reader_t *reader)
 METHOD(tls_handshake_t, process, status_t,
 	private_tls_peer_t *this, tls_handshake_type_t type, bio_reader_t *reader)
 {
-	tls_handshake_type_t expected;
+	tls_handshake_type_t expected; // handshake type from tls.h
 	switch (this->state)
 	{
 		case STATE_HELLO_SENT:
@@ -728,12 +750,20 @@ METHOD(tls_handshake_t, process, status_t,
 			}
 			expected = TLS_SERVER_HELLO;
 			break;
-		case STATE_HELLO_RECEIVED:
+		case STATE_HELLO_TLS12_RECEIVED:
 			if (type == TLS_CERTIFICATE)
 			{
 				return process_certificate(this, reader);
 			}
 			expected = TLS_CERTIFICATE;
+			break;
+		case STATE_HELLO_TLS13_RECEIVED:
+			if (type == TLS_ENCRYPTED_EXTENSIONS)
+			{
+				DBG2(DBG_TLS, "encrypted extensions received");
+				// return process_encrypted_extensions(this, reader);
+			}
+			expected = TLS_ENCRYPTED_EXTENSIONS;
 			break;
 		case STATE_CERT_RECEIVED:
 			if (type == TLS_SERVER_KEY_EXCHANGE)
@@ -757,9 +787,6 @@ METHOD(tls_handshake_t, process, status_t,
 			}
 			expected = TLS_SERVER_HELLO_DONE;
 			break;
-
-
-
 		case STATE_CIPHERSPEC_CHANGED_IN:
 			if (type == TLS_FINISHED)
 			{
@@ -767,6 +794,7 @@ METHOD(tls_handshake_t, process, status_t,
 			}
 			expected = TLS_FINISHED;
 			break;
+
 		default:
 			DBG1(DBG_TLS, "TLS %N not expected in current state",
 			     tls_handshake_type_names, type);
@@ -910,6 +938,7 @@ static status_t send_client_hello(private_tls_peer_t *this,
 	DBG2(DBG_TLS, "sending extension: Signature Algorithms");
 	extensions->write_uint16(extensions, TLS_EXT_SIGNATURE_ALGORITHMS);
 	this->crypto->get_signature_algorithms(this->crypto, extensions);
+
 
 	DBG2(DBG_TLS, "sending extension: Key Share");
 	if (!this->dh->get_my_public_value(this->dh, &pub))
@@ -1204,7 +1233,8 @@ METHOD(tls_handshake_t, build, status_t,
 	{
 		case STATE_INIT:
 			return send_client_hello(this, type, writer);
-		case STATE_HELLO_DONE:
+		case STATE_HELLO_DONE: /* after server hello done received */
+			/* checks if client auth needed */
 			if (this->peer)
 			{
 				return send_certificate(this, type, writer);
@@ -1235,7 +1265,7 @@ METHOD(tls_handshake_t, cipherspec_changed, bool,
 	{
 		if (this->resume)
 		{
-			return this->state == STATE_HELLO_RECEIVED;
+			return this->state == STATE_HELLO_TLS12_RECEIVED;
 		}
 		return this->state == STATE_FINISHED_SENT;
 	}
