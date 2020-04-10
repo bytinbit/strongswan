@@ -29,7 +29,7 @@ typedef struct private_tls_server_t private_tls_server_t;
 
 typedef enum {
 	STATE_INIT,
-	STATE_HELLO_RECEIVED,
+	STATE_HELLO_TLS12_RECEIVED,
 	STATE_HELLO_SENT,
 	STATE_CERT_SENT,
 	STATE_KEY_EXCHANGE_SENT,
@@ -327,7 +327,7 @@ static status_t process_client_hello(private_tls_server_t *this,
 			 tls_version_names, this->tls->get_version_max(this->tls),
 			 tls_cipher_suite_names, this->suite);
 	}
-	this->state = STATE_HELLO_RECEIVED;
+	this->state = STATE_HELLO_TLS12_RECEIVED;
 	return NEED_MORE;
 }
 
@@ -997,7 +997,7 @@ METHOD(tls_handshake_t, build, status_t,
 
 	switch (this->state)
 	{
-		case STATE_HELLO_RECEIVED:
+		case STATE_HELLO_TLS12_RECEIVED:
 			return send_server_hello(this, type, writer);
 		case STATE_HELLO_SENT:
 			return send_certificate(this, type, writer);
