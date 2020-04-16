@@ -83,16 +83,18 @@ METHOD(tls_protection_t, process, status_t,
 			return NEED_MORE;
 		}
 	}
-
-	if (type == TLS_CHANGE_CIPHER_SPEC)
-	{
-		this->seq_in = 0;
-	}
-	else
-	{
-		this->seq_in++;
+	if (this->version < TLS_1_3) {
+		if (type == TLS_CHANGE_CIPHER_SPEC)
+		{
+			this->seq_in = 0; // TODO not good for TLS 1.3 do it later when finished msg sent
+		}
+		else
+		{
+			this->seq_in++;
+		}
 	}
 	return this->compression->process(this->compression, type, data);
+
 }
 
 METHOD(tls_protection_t, build, status_t,

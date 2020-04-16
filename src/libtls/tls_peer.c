@@ -25,7 +25,7 @@ typedef struct private_tls_peer_t private_tls_peer_t;
 typedef enum {
 	STATE_INIT,
 	STATE_HELLO_SENT,
-	STATE_HELLO_TLS12_RECEIVED,
+	STATE_HELLO_RECEIVED,
 	STATE_HELLO_DONE,
 	STATE_CERT_SENT,
 	STATE_CERT_RECEIVED,
@@ -40,8 +40,9 @@ typedef enum {
 
 	/* new states in TLS 1.3 */
 	STATE_HELLORETRYREQ_RECEIVED,
-	STATE_HELLO_TLS13_RECEIVED,
 	STATE_ENCRYPTED_EXTENSIONS_RECEIVED,
+	STATE_DUMMY_CIPHERSPEC_RECEIVED,
+	STATE_HELLO13_RECEIVED,
 
 } peer_state_t;
 
@@ -258,13 +259,13 @@ static status_t process_server_hello(private_tls_peer_t *this,
 		free(this->session.ptr);
 		this->session = chunk_clone(session);
 	}
-	if (version < TLS_1_3)
-	{
-		this->state = STATE_HELLO_TLS12_RECEIVED;
+
+	if (this->tls->get_version_max(this->tls) < TLS_1_3) {
+		this->state = STATE_HELLO_RECEIVED;
 	}
-	else
+	else // must set a different state here, because it's used later in the change cipherspec check
 	{
-		this->state = STATE_HELLO_TLS13_RECEIVED;
+		this->state = STATE_HELLO13_RECEIVED;
 	}
 
 	return NEED_MORE;
@@ -272,12 +273,14 @@ static status_t process_server_hello(private_tls_peer_t *this,
 
 /**
 * Process a server encrypted extensions message
-*/
+
 static process_encrypted_extensions(private_tls_peer_t *this,
                              bio_reader_t *reader)
 {
-	return 0;
+
 }
+*/
+
 /**
  * Check if a server certificate is acceptable for the given server identity
  */
@@ -740,7 +743,7 @@ static status_t process_finished(private_tls_peer_t *this, bio_reader_t *reader)
 METHOD(tls_handshake_t, process, status_t,
 	private_tls_peer_t *this, tls_handshake_type_t type, bio_reader_t *reader)
 {
-	tls_handshake_type_t expected; // handshake type from tls.h
+	tls_handshake_type_t expected;
 	switch (this->state)
 	{
 		case STATE_HELLO_SENT:
@@ -750,21 +753,21 @@ METHOD(tls_handshake_t, process, status_t,
 			}
 			expected = TLS_SERVER_HELLO;
 			break;
-		case STATE_HELLO_TLS12_RECEIVED:
+		case STATE_DUMMY_CIPHERSPEC_RECEIVED:
+			DBG2(DBG_TLS, "I got a dummy Change Cipher Spec!");
+
+		case STATE_HELLO_RECEIVED:
 			if (type == TLS_CERTIFICATE)
 			{
 				return process_certificate(this, reader);
 			}
 			expected = TLS_CERTIFICATE;
 			break;
-		case STATE_HELLO_TLS13_RECEIVED:
+		case STATE_HELLO13_RECEIVED:
 			if (type == TLS_ENCRYPTED_EXTENSIONS)
 			{
-				DBG2(DBG_TLS, "encrypted extensions received");
-				// return process_encrypted_extensions(this, reader);
+				DBG2(DBG_TLS, "Onwards to encrypted extensions");
 			}
-			expected = TLS_ENCRYPTED_EXTENSIONS;
-			break;
 		case STATE_CERT_RECEIVED:
 			if (type == TLS_SERVER_KEY_EXCHANGE)
 			{
@@ -787,7 +790,9 @@ METHOD(tls_handshake_t, process, status_t,
 			}
 			expected = TLS_SERVER_HELLO_DONE;
 			break;
+
 		case STATE_CIPHERSPEC_CHANGED_IN:
+			DBG2(DBG_TLS, "tls_peer->METHOD proces is in state CIPHERSPEC CHANGED IN");
 			if (type == TLS_FINISHED)
 			{
 				return process_finished(this, reader);
@@ -1265,9 +1270,17 @@ METHOD(tls_handshake_t, cipherspec_changed, bool,
 	{
 		if (this->resume)
 		{
-			return this->state == STATE_HELLO_TLS12_RECEIVED;
+			return this->state == STATE_HELLO_RECEIVED;
 		}
-		return this->state == STATE_FINISHED_SENT;
+		if (this->tls->get_version_max(this->tls) < TLS_1_3) {
+			DBG2(DBG_TLS, "\tInside cipherspec_changed -> version smaller than TLS 1.3");
+			return this->state == STATE_FINISHED_SENT;
+		}
+		else
+		{
+			DBG2(DBG_TLS, "\t2 Inside cipherspec_changed -> version TLS 1.3");
+			return true; // TODO always return true because it's a dummy and the state not relevant
+		}
 	}
 	else
 	{
@@ -1286,14 +1299,23 @@ METHOD(tls_handshake_t, cipherspec_changed, bool,
 METHOD(tls_handshake_t, change_cipherspec, void,
 	private_tls_peer_t *this, bool inbound)
 {
-	this->crypto->change_cipher(this->crypto, inbound);
-	if (inbound)
+	DBG2(DBG_TLS, "\t3 Inside change_cipherspec");
+	if (this->tls->get_version_max(this->tls) < TLS_1_3)
 	{
-		this->state = STATE_CIPHERSPEC_CHANGED_IN;
+		this->crypto->change_cipher(this->crypto, inbound);
+		if (inbound)
+		{
+			this->state = STATE_CIPHERSPEC_CHANGED_IN;
+		}
+		else
+		{
+			this->state = STATE_CIPHERSPEC_CHANGED_OUT;
+		}
 	}
 	else
 	{
-		this->state = STATE_CIPHERSPEC_CHANGED_OUT;
+		DBG2(DBG_TLS, "\t... setting state to STATE_DUMMY_CIPHERSPEC_RECEIVED");
+		this->state = STATE_DUMMY_CIPHERSPEC_RECEIVED;
 	}
 }
 
