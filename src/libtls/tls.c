@@ -283,11 +283,13 @@ METHOD(tls_t, process, status_t,
 				}
 				DBG2(DBG_TLS, "processing TLS %N record (%d bytes)",
 					 tls_content_type_names, record->type, len);
+
 				status = this->protection->process(this->protection,
 								record->type, chunk_create(record->data, len));
+				/* TODO exits with status 1 (error) when tls 1.3 */
 				if (status != NEED_MORE)
 				{
-					return status;
+					return status;  /* fails here, returns 1*/
 				}
 				buf += len + sizeof(tls_record_t);
 				buflen -= len + sizeof(tls_record_t);
