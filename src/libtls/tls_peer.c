@@ -212,6 +212,7 @@ static status_t process_server_hello(private_tls_peer_t *this,
 				{
 					DBG2(DBG_TLS, "server key share unable to save");
 				}
+
 				break;
 			default:
 				continue;
@@ -263,8 +264,26 @@ static status_t process_server_hello(private_tls_peer_t *this,
 	if (this->tls->get_version_max(this->tls) < TLS_1_3) {
 		this->state = STATE_HELLO_RECEIVED;
 	}
-	else // must set a different state here, because it's used later in the change cipherspec check
+	else
 	{
+		chunk_t shared_secret;
+		if(!this->dh->get_shared_secret(this->dh, &shared_secret))
+		{
+			DBG2(DBG_TLS, "No shared secret key found");
+		}
+		else
+		{
+			if(!this->crypto->derive_handshake_secret(this->crypto,
+				&shared_secret))
+			{
+				DBG2(DBG_TLS, "Derive handshake secret failed");
+			}
+			else
+			{
+				DBG2(DBG_TLS, "Derive handshake secret success");
+			}
+		}
+
 		this->state = STATE_HELLO13_RECEIVED;
 	}
 
@@ -855,7 +874,6 @@ static status_t send_client_hello(private_tls_peer_t *this,
 
 	/* Client Key Generation */
     this->dh = lib->crypto->create_dh(lib->crypto, CURVE_25519);
-
 
 	/* TLS version_max in Handshake Protocol */
 	version_max = this->tls->get_version_max(this->tls);

@@ -14,6 +14,7 @@
  */
 
 #include "tls_crypto.h"
+#include "tls_hkdf.h"
 #include "../libstrongswan/crypto/signers/signer.h"
 #include "../libstrongswan/crypto/diffie_hellman.h"
 #include "../libstrongswan/crypto/prfs/prf.h"
@@ -372,6 +373,11 @@ struct private_tls_crypto_t {
 	 * Number of supported suites
 	 */
 	int suite_count;
+
+	/**
+	 * HKDF for TLS 1.3
+	 */
+	tls_hkdf_t *hkdf;
 
 	/**
 	 * Selected cipher suite
@@ -1872,6 +1878,21 @@ METHOD(tls_crypto_t, derive_secrets, bool,
 		   expand_keys(this, client_random, server_random);
 }
 
+// TODO generate_secret verwenden
+METHOD(tls_crypto_t, derive_handshake_secret, bool, private_tls_crypto_t *this,
+	chunk_t *shared_secret)
+{
+	if(!this->hkdf->set_shared_secret(this->hkdf, shared_secret))
+	{
+		DBG1(DBG_TLS, "calculating handshake keys failed");
+		return FALSE;
+	}
+	else
+	{
+		return TRUE;
+	}
+}
+
 METHOD(tls_crypto_t, resume_session, tls_cipher_suite_t,
 	private_tls_crypto_t *this, chunk_t session, identification_t *id,
 	chunk_t client_random, chunk_t server_random)
@@ -1969,6 +1990,7 @@ tls_crypto_t *tls_crypto_create(tls_t *tls, tls_cache_t *cache)
 			.verify_handshake = _verify_handshake,
 			.calculate_finished = _calculate_finished,
 			.derive_secrets = _derive_secrets,
+			.derive_handshake_secret = _derive_handshake_secret,
 			.resume_session = _resume_session,
 			.get_session = _get_session,
 			.change_cipher = _change_cipher,
@@ -1978,6 +2000,8 @@ tls_crypto_t *tls_crypto_create(tls_t *tls, tls_cache_t *cache)
 		.tls = tls,
 		.cache = cache,
 	);
+
+	this->hkdf = tls_hkdf_create(HASH_SHA256, NULL);
 
 	enumerator = lib->creds->create_builder_enumerator(lib->creds);
 	while (enumerator->enumerate(enumerator, &type, &subtype))

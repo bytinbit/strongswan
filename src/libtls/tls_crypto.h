@@ -537,6 +537,14 @@ struct tls_crypto_t {
 						   chunk_t client_random, chunk_t server_random);
 
 	/**
+	 * Derive the handshake keys.
+	 *
+	 * @param shared_secret 	input key material
+	 * @return 		TRUE if		secret derived successfully
+	 */
+	bool (*derive_handshake_secret)(tls_crypto_t *this, chunk_t *shared_secret);
+
+	/**
 	 * Try to resume a TLS session, derive key material.
 	 *
 	 * @param session		session identifier
