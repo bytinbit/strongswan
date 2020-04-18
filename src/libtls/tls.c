@@ -93,7 +93,7 @@ ENUM_BEGIN(tls_extension_names, TLS_EXT_SERVER_NAME, TLS_EXT_STATUS_REQUEST,
 ENUM_NEXT(tls_extension_names,
           TLS_EXT_SUPPORTED_GROUPS, TLS_EXT_EC_POINT_FORMATS,
           TLS_EXT_STATUS_REQUEST,
-          "elliptic curves",
+          "supported groups",
           "ec point formats");
 ENUM_NEXT(tls_extension_names,
 		TLS_EXT_SIGNATURE_ALGORITHMS, TLS_EXT_SIGNATURE_ALGORITHMS,
@@ -286,10 +286,9 @@ METHOD(tls_t, process, status_t,
 
 				status = this->protection->process(this->protection,
 								record->type, chunk_create(record->data, len));
-				/* TODO exits with status 1 (error) when tls 1.3 */
 				if (status != NEED_MORE)
 				{
-					return status;  /* fails here, returns 1*/
+					return status;
 				}
 				buf += len + sizeof(tls_record_t);
 				buflen -= len + sizeof(tls_record_t);

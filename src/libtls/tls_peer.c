@@ -922,14 +922,16 @@ static status_t send_client_hello(private_tls_peer_t *this,
 	}
 	else  /* using TLS 1.3 */
 	{
-		DBG2(DBG_TLS, "sending extension: Supported Groups for TLS 1.3");
+		DBG2(DBG_TLS, "sending extension: %N",
+			tls_extension_names, TLS_EXT_SUPPORTED_GROUPS);
 		extensions->write_uint16(extensions, TLS_EXT_SUPPORTED_GROUPS);
 		extensions->write_uint16(extensions, 4);
 		extensions->write_uint16(extensions, 2);
 		extensions->write_uint16(extensions, TLS_CURVE25519);
 	}
 
-	DBG2(DBG_TLS, "sending extension: Supported Versions");
+	DBG2(DBG_TLS, "sending extension: %N",
+		tls_extension_names, TLS_EXT_SUPPORTED_VERSIONS);
 	nof_tls_versions = (version_max - version_min + 1)*2;
 	extensions->write_uint16(extensions, TLS_EXT_SUPPORTED_VERSIONS);
 	extensions->write_uint16(extensions, nof_tls_versions+1);
@@ -940,12 +942,14 @@ static status_t send_client_hello(private_tls_peer_t *this,
 		nof_tls_versions += 2;
 	}
 
-	DBG2(DBG_TLS, "sending extension: Signature Algorithms");
+	DBG2(DBG_TLS, "sending extension: %N",
+	     tls_extension_names, TLS_EXT_SIGNATURE_ALGORITHMS);
 	extensions->write_uint16(extensions, TLS_EXT_SIGNATURE_ALGORITHMS);
 	this->crypto->get_signature_algorithms(this->crypto, extensions);
 
 
-	DBG2(DBG_TLS, "sending extension: Key Share");
+	DBG2(DBG_TLS, "sending extension: %N",
+	     tls_extension_names, TLS_EXT_KEY_SHARE);
 	if (!this->dh->get_my_public_value(this->dh, &pub))
 	{
 		this->alert->add(this->alert, TLS_FATAL, TLS_INTERNAL_ERROR);
