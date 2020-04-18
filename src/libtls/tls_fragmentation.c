@@ -279,16 +279,12 @@ METHOD(tls_fragmentation_t, process, status_t,
 	switch (type)
 	{
 		case TLS_CHANGE_CIPHER_SPEC:
-			DBG2(DBG_TLS, "\t1 We have a case of TLS_CHANGE_CIPHER_SPEC");
 			if (this->handshake->cipherspec_changed(this->handshake, TRUE))
 			{
 				this->handshake->change_cipherspec(this->handshake, TRUE);
-				DBG2(DBG_TLS, "\t4 NEED MOAR");
-				status = process_handshake(this, reader);
-				// status = NEED_MORE;
+				status = NEED_MORE;
 				break;
 			}
-			DBG2(DBG_TLS, "\t5 Inside fragmentation->process, case TLS_CHANGE_CIPHER_SPEC");
 			status = FAILED;
 			break;
 		case TLS_ALERT:
