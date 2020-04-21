@@ -110,6 +110,9 @@ struct tls_hkdf_t {
 	bool (*derive_finished)(tls_hkdf_t *this, bool is_server,
 							chunk_t *finished);
 
+	bool (*derive_key)(tls_hkdf_t *this, bool is_server, size_t length, chunk_t *key);
+	bool (*derive_iv)(tls_hkdf_t *this, bool is_server, size_t length, chunk_t *iv);
+
 	/**
 	 * Destroy a tls_hkdf_t
 	 */
