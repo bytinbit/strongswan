@@ -146,6 +146,16 @@ enum tls_extension_t {
 	TLS_EXT_EC_POINT_FORMATS = 11,
 	/** list supported signature algorithms */
 	TLS_EXT_SIGNATURE_ALGORITHMS = 13,
+	/** indicate usage of Datagram Transport Layer Security (DTLS) */
+	TLS_EXT_USE_SRTP = 14,
+	/** indicate usage of heartbeat */
+	TLS_EXT_HEARTBEAT = 15,
+	/** indicate usage of application-layer protocol negotiation */
+	TLS_EXT_APPLICATION_LAYER_PROTOCOL_NEGOTIATION = 16,
+	/** exchange raw public key, client side*/
+	TLS_CLIENT_CERTIFICATE_TYPE = 19,
+	/** exchange raw public key, server side*/
+	TLS_SERVER_CERTIFICATE_TYPE = 20,
 	/** negotiate identity of the psk **/
 	TLS_EXT_PRE_SHARED_KEY = 41,
 	/** send data in 0-RTT when psk is used and early data is allowed **/

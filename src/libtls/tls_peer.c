@@ -299,8 +299,60 @@ static status_t process_server_hello(private_tls_peer_t *this,
 static status_t process_encrypted_extensions(private_tls_peer_t *this,
                              bio_reader_t *reader)
 {
-	DBG2(DBG_TLS, "\tWe landed in process_encrypted_extensions!");
-	this->state = STATE_ENCRYPTED_EXTENSIONS_RECEIVED;
+	uint16_t length;
+	chunk_t ext = chunk_empty;
+	int offset = 0;
+	uint16_t extension_type, extension_length;
+	if (!reader->read_uint16(reader, &length) ||
+		(reader->remaining(reader) && !reader->read_data16(reader, &ext)))
+	{
+		DBG1(DBG_TLS, "received invalid EncryptedExtensions");
+		this->alert->add(this->alert, TLS_FATAL, TLS_DECODE_ERROR);
+		return NEED_MORE;
+	}
+	if (ext.len == 0)
+	{
+		this->state = STATE_ENCRYPTED_EXTENSIONS_RECEIVED;
+		return NEED_MORE;
+	}
+	else
+	{
+		bio_reader_t *extension_reader = bio_reader_create(ext);
+
+		while (offset < ext.len)
+			/* TODO how to test extensions that I don't receive in OpenSSL?
+			 * Also: Magic Number 4*/
+		{
+			chunk_t extension_payload = chunk_empty;
+			extension_reader->read_uint16(extension_reader, &extension_type);
+			extension_reader->read_uint16(extension_reader, &extension_length);
+			offset += extension_length + 4;
+
+			if (!extension_reader->read_data(extension_reader,
+			                                 extension_length,
+			                                 &extension_payload))
+			{
+				DBG2(DBG_TLS, "unable to read extension payload data");
+			}
+			switch (extension_type)
+			{
+				case TLS_EXT_SERVER_NAME:
+				case TLS_EXT_MAX_FRAGMENT_LENGTH:
+				case TLS_EXT_SUPPORTED_GROUPS:
+				case TLS_EXT_USE_SRTP:
+				case TLS_EXT_HEARTBEAT:
+				case TLS_EXT_APPLICATION_LAYER_PROTOCOL_NEGOTIATION:
+				case TLS_CLIENT_CERTIFICATE_TYPE:
+				case TLS_SERVER_CERTIFICATE_TYPE:
+					this->state = STATE_ENCRYPTED_EXTENSIONS_RECEIVED;
+					break;
+				default:
+					DBG1(DBG_TLS, "received forbidden EncryptedExtensions");
+					this->alert->add(this->alert, TLS_FATAL, TLS_ILLEGAL_PARAMETER);
+					return NEED_MORE;
+			}
+		}
+	}
 	return NEED_MORE;
 }
 
@@ -781,10 +833,9 @@ METHOD(tls_handshake_t, process, status_t,
 		case STATE_CIPHERSPEC13_RECEIVED:
 			/* fall through since ChangeCipherspec is only a dummy in TLS 1.3 */
 		case STATE_HELLO13_RECEIVED:
-			DBG2(DBG_TLS, "\tState Hello 13 Received");
 			if (type == TLS_ENCRYPTED_EXTENSIONS)
 			{
-				return process_encrypted_extensions(this, reader); // Todo
+				return process_encrypted_extensions(this, reader);
 			}
 			expected = TLS_ENCRYPTED_EXTENSIONS;
 			break;
@@ -803,6 +854,7 @@ METHOD(tls_handshake_t, process, status_t,
 			}
 			expected = TLS_CERTIFICATE;
 			break;
+
 
 		/* end new states */
 		case STATE_CERT_RECEIVED:
