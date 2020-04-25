@@ -299,7 +299,7 @@ static status_t process_server_hello(private_tls_peer_t *this,
 static status_t process_encrypted_extensions(private_tls_peer_t *this,
                              bio_reader_t *reader)
 {
-	DBG2(DBG_TLS, "We landed in process_encrypted_extensions!");
+	DBG2(DBG_TLS, "\tWe landed in process_encrypted_extensions!");
 	this->state = STATE_ENCRYPTED_EXTENSIONS_RECEIVED;
 	return NEED_MORE;
 }
@@ -777,15 +777,9 @@ METHOD(tls_handshake_t, process, status_t,
 			}
 			expected = TLS_SERVER_HELLO;
 			break;
-		case STATE_HELLO_RECEIVED:
-			if (type == TLS_CERTIFICATE)
-			{
-				return process_certificate(this, reader);
-			}
-			expected = TLS_CERTIFICATE;
-			break;
-
 		/* TODO new states in TLS 1.3 */
+		case STATE_CIPHERSPEC13_RECEIVED:
+			/* fall through since ChangeCipherspec is only a dummy in TLS 1.3 */
 		case STATE_HELLO13_RECEIVED:
 			DBG2(DBG_TLS, "\tState Hello 13 Received");
 			if (type == TLS_ENCRYPTED_EXTENSIONS)
@@ -794,9 +788,15 @@ METHOD(tls_handshake_t, process, status_t,
 			}
 			expected = TLS_ENCRYPTED_EXTENSIONS;
 			break;
-		case STATE_CIPHERSPEC13_RECEIVED:
-			/* fall through since ChangeCipherspec is only a dummy in TLS 1.3 */
+		case STATE_HELLO_RECEIVED:
+			if (type == TLS_CERTIFICATE)
+			{
+				return process_certificate(this, reader);
+			}
+			expected = TLS_CERTIFICATE;
+			break;
 		case STATE_ENCRYPTED_EXTENSIONS_RECEIVED:
+			DBG2(DBG_TLS, "\tState Encrypted Extensions Received");
 			if (type == TLS_CERTIFICATE)
 			{
 				return process_certificate(this, reader);

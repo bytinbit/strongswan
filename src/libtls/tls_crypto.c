@@ -1899,7 +1899,7 @@ METHOD(tls_crypto_t, derive_secrets, bool,
 METHOD(tls_crypto_t, derive_handshake_secret, bool, private_tls_crypto_t *this,
 	chunk_t *shared_secret)
 {
-	chunk_t dummy_secret;
+	chunk_t client_handshake_traffic_secret, server_handshake_traffic_secret;
 	chunk_t c_key, c_iv, s_key, s_iv;
 	if(!this->hkdf->set_shared_secret(this->hkdf, shared_secret))
 	{
@@ -1909,48 +1909,48 @@ METHOD(tls_crypto_t, derive_handshake_secret, bool, private_tls_crypto_t *this,
 	else
 	{
 		/* Client key material */
-		this->hkdf->generate_secret(this->hkdf, TLS_HKDF_C_HS_TRAFFIC, &this->handshake, &dummy_secret);
+		this->hkdf->generate_secret(this->hkdf, TLS_HKDF_C_HS_TRAFFIC, &this->handshake, &client_handshake_traffic_secret);
 		if(!this->hkdf->derive_key(this->hkdf, FALSE, this->aead_out->get_encr_key_size(this->aead_out), &c_key))
 		{
 			DBG1(DBG_TLS, "deriving client key failed");
 			return FALSE;
 		}
-		if(!this->hkdf->derive_key(this->hkdf, FALSE, this->aead_out->get_iv_size(this->aead_out), &c_iv))
+		if(!this->hkdf->derive_iv(this->hkdf, FALSE, this->aead_out->get_iv_size(this->aead_out), &c_iv))
 		{
 			DBG1(DBG_TLS, "deriving client iv failed");
 			return FALSE;
 		}
+
 		/* Server key material */
-		this->hkdf->generate_secret(this->hkdf, TLS_HKDF_S_HS_TRAFFIC, &this->handshake, &dummy_secret);
+		this->hkdf->generate_secret(this->hkdf, TLS_HKDF_S_HS_TRAFFIC, &this->handshake, &server_handshake_traffic_secret);
 		if(!this->hkdf->derive_key(this->hkdf, TRUE, this->aead_in->get_encr_key_size(this->aead_in), &s_key))
 		{
 			DBG1(DBG_TLS, "deriving server key failed");
 			return FALSE;
 		}
-		if(!this->hkdf->derive_key(this->hkdf, TRUE, this->aead_in->get_iv_size(this->aead_in), &s_iv))
+		if(!this->hkdf->derive_iv(this->hkdf, TRUE, this->aead_in->get_iv_size(this->aead_in), &s_iv))
 		{
 			DBG1(DBG_TLS, "deriving server iv failed");
 			return FALSE;
 		}
-		/* if (this->tls->is_server(this->tls))
+		if (this->tls->is_server(this->tls))
 		{
-			if (!this->aead_in->set_keys(this->aead_in, cw_mac, cw, cw_iv) ||
-				!this->aead_out->set_keys(this->aead_out, sw_mac, sw, sw_iv))
+			if (!this->aead_in->set_keys(this->aead_in, chunk_empty, s_key, s_iv) ||
+				!this->aead_out->set_keys(this->aead_out, chunk_empty, c_key, c_iv))
 			{
+				DBG1(DBG_TLS, "setting aead server key material failed");
 				return FALSE;
 			}
 		}
 		else
 		{
-			*/
-		if (!this->aead_out->set_keys(this->aead_out, chunk_empty, c_key, c_iv) ||
-			!this->aead_in->set_keys(this->aead_in, chunk_empty, s_key, s_iv))
-		{
-			DBG2(DBG_TLS, "Oh no, something bad happened to our keys!");
-			return FALSE;
+			if (!this->aead_out->set_keys(this->aead_out, chunk_empty, c_key, c_iv) ||
+				!this->aead_in->set_keys(this->aead_in, chunk_empty, s_key, s_iv))
+			{
+				DBG1(DBG_TLS, "setting aead client key material failed");
+				return FALSE;
+			}
 		}
-		// }
-
 		return TRUE;
 	}
 }
