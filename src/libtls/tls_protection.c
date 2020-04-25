@@ -72,17 +72,24 @@ METHOD(tls_protection_t, process, status_t,
 	{	/* don't accept more input, fatal error occurred */
 		return NEED_MORE;
 	}
-
-	if (this->aead_in)
+	if (type != TLS_CHANGE_CIPHER_SPEC)
 	{
-		if (!this->aead_in->decrypt(this->aead_in, this->version,
-									&type, this->seq_in, &data))
+		if (this->aead_in)
 		{
-			DBG1(DBG_TLS, "TLS record decryption failed");
-			this->alert->add(this->alert, TLS_FATAL, TLS_BAD_RECORD_MAC);
-			return NEED_MORE;
+			DBG2(DBG_TLS, "\tversion: %N", tls_version_names, this->version);
+			DBG2(DBG_TLS, "\ttype:  %N", tls_content_type_names, type);
+			DBG2(DBG_TLS, "\tseq_in:  %d", this->seq_in);
+			DBG2(DBG_TLS, "\tdata:  %B", &data);
+			if (!this->aead_in->decrypt(this->aead_in, this->version,
+			                            &type, this->seq_in, &data))
+			{
+				DBG1(DBG_TLS, "TLS record decryption failed");
+				this->alert->add(this->alert, TLS_FATAL, TLS_BAD_RECORD_MAC);
+				return NEED_MORE;
+			}
 		}
 	}
+
 	if (this->version < TLS_1_3) {
 		// TODO not good for TLS 1.3 do it later when finished msg sent
 		if (type == TLS_CHANGE_CIPHER_SPEC)

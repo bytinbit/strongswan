@@ -208,8 +208,9 @@ static status_t process_server_hello(private_tls_peer_t *this,
 					DBG2(DBG_TLS, "no valid key share found in extension");
 				}
 
-				if(key_type != TLS_CURVE25519 && !this->dh->set_other_public_value(this->dh, ext_key_share))
+				if(key_type != CURVE_25519 && !this->dh->set_other_public_value(this->dh, ext_key_share))
 				{
+
 					DBG2(DBG_TLS, "server key share unable to save");
 				}
 
@@ -261,7 +262,8 @@ static status_t process_server_hello(private_tls_peer_t *this,
 		this->session = chunk_clone(session);
 	}
 
-	if (this->tls->get_version_max(this->tls) < TLS_1_3) {
+	if (this->tls->get_version_max(this->tls) < TLS_1_3)
+	{
 		this->state = STATE_HELLO_RECEIVED;
 	}
 	else
@@ -280,7 +282,8 @@ static status_t process_server_hello(private_tls_peer_t *this,
 			}
 			else
 			{
-				DBG2(DBG_TLS, "Derive handshake secret success");
+				DBG2(DBG_TLS, "Derive handshake secrets success");
+
 			}
 		}
 
@@ -296,6 +299,7 @@ static status_t process_server_hello(private_tls_peer_t *this,
 static status_t process_encrypted_extensions(private_tls_peer_t *this,
                              bio_reader_t *reader)
 {
+	DBG2(DBG_TLS, "We landed in process_encrypted_extensions!");
 	this->state = STATE_ENCRYPTED_EXTENSIONS_RECEIVED;
 	return NEED_MORE;
 }
@@ -783,6 +787,7 @@ METHOD(tls_handshake_t, process, status_t,
 
 		/* TODO new states in TLS 1.3 */
 		case STATE_HELLO13_RECEIVED:
+			DBG2(DBG_TLS, "\tState Hello 13 Received");
 			if (type == TLS_ENCRYPTED_EXTENSIONS)
 			{
 				return process_encrypted_extensions(this, reader); // Todo

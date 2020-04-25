@@ -1234,12 +1234,24 @@ static bool create_traditional(private_tls_crypto_t *this, suite_algs_t *algs)
  */
 static bool create_aead(private_tls_crypto_t *this, suite_algs_t *algs)
 {
-	this->aead_in = tls_aead_create_aead(algs->encr, algs->encr_size);
-	this->aead_out = tls_aead_create_aead(algs->encr, algs->encr_size);
+	if (this->tls->get_version_max(this->tls) < TLS_1_3)
+	{
+		this->aead_in = tls_aead_create_aead(algs->encr, algs->encr_size);
+		this->aead_out = tls_aead_create_aead(algs->encr, algs->encr_size);
+	}
+	else
+	{
+		this->aead_in = tls_aead_create_seq(algs->encr, algs->encr_size);
+		this->aead_out = tls_aead_create_seq(algs->encr, algs->encr_size);
+
+		this->protection->set_cipher(this->protection, TRUE, this->aead_in);
+		this->protection->set_cipher(this->protection, FALSE, this->aead_out);
+
+	}
 	if (!this->aead_in || !this->aead_out)
 	{
 		DBG1(DBG_TLS, "selected TLS transforms %N-%u not supported",
-			 encryption_algorithm_names, algs->encr, algs->encr_size * 8);
+		     encryption_algorithm_names, algs->encr, algs->encr_size * 8);
 		return FALSE;
 	}
 	return TRUE;
@@ -1281,6 +1293,12 @@ static bool create_ciphers(private_tls_crypto_t *this, suite_algs_t *algs)
 	else
     {
 	    /* TODO handle HKDF in TLS 1.3 */
+	    this->hkdf = tls_hkdf_create(algs->hash, NULL);
+	    if (!this->hkdf)
+	    {
+		    DBG1(DBG_TLS, "TLS HKDF creation unsuccessful");
+		    return FALSE;
+	    }
     }
 	if (algs->encr == ENCR_NULL)
 	{
@@ -1291,7 +1309,7 @@ static bool create_ciphers(private_tls_crypto_t *this, suite_algs_t *algs)
 	}
 	else if (encryption_algorithm_is_aead(algs->encr))
 	{
-		if (create_aead(this, algs))
+		if (create_aead(this, algs)) // TODO
 		{
 			return TRUE;
 		}
@@ -1878,10 +1896,11 @@ METHOD(tls_crypto_t, derive_secrets, bool,
 		   expand_keys(this, client_random, server_random);
 }
 
-// TODO generate_secret verwenden
 METHOD(tls_crypto_t, derive_handshake_secret, bool, private_tls_crypto_t *this,
 	chunk_t *shared_secret)
 {
+	chunk_t dummy_secret;
+	chunk_t c_key, c_iv, s_key, s_iv;
 	if(!this->hkdf->set_shared_secret(this->hkdf, shared_secret))
 	{
 		DBG1(DBG_TLS, "calculating handshake keys failed");
@@ -1889,6 +1908,49 @@ METHOD(tls_crypto_t, derive_handshake_secret, bool, private_tls_crypto_t *this,
 	}
 	else
 	{
+		/* Client key material */
+		this->hkdf->generate_secret(this->hkdf, TLS_HKDF_C_HS_TRAFFIC, &this->handshake, &dummy_secret);
+		if(!this->hkdf->derive_key(this->hkdf, FALSE, this->aead_out->get_encr_key_size(this->aead_out), &c_key))
+		{
+			DBG1(DBG_TLS, "deriving client key failed");
+			return FALSE;
+		}
+		if(!this->hkdf->derive_key(this->hkdf, FALSE, this->aead_out->get_iv_size(this->aead_out), &c_iv))
+		{
+			DBG1(DBG_TLS, "deriving client iv failed");
+			return FALSE;
+		}
+		/* Server key material */
+		this->hkdf->generate_secret(this->hkdf, TLS_HKDF_S_HS_TRAFFIC, &this->handshake, &dummy_secret);
+		if(!this->hkdf->derive_key(this->hkdf, TRUE, this->aead_in->get_encr_key_size(this->aead_in), &s_key))
+		{
+			DBG1(DBG_TLS, "deriving server key failed");
+			return FALSE;
+		}
+		if(!this->hkdf->derive_key(this->hkdf, TRUE, this->aead_in->get_iv_size(this->aead_in), &s_iv))
+		{
+			DBG1(DBG_TLS, "deriving server iv failed");
+			return FALSE;
+		}
+		/* if (this->tls->is_server(this->tls))
+		{
+			if (!this->aead_in->set_keys(this->aead_in, cw_mac, cw, cw_iv) ||
+				!this->aead_out->set_keys(this->aead_out, sw_mac, sw, sw_iv))
+			{
+				return FALSE;
+			}
+		}
+		else
+		{
+			*/
+		if (!this->aead_out->set_keys(this->aead_out, chunk_empty, c_key, c_iv) ||
+			!this->aead_in->set_keys(this->aead_in, chunk_empty, s_key, s_iv))
+		{
+			DBG2(DBG_TLS, "Oh no, something bad happened to our keys!");
+			return FALSE;
+		}
+		// }
+
 		return TRUE;
 	}
 }

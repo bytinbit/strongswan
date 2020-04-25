@@ -540,7 +540,7 @@ struct tls_crypto_t {
 	 * Derive the handshake keys.
 	 *
 	 * @param shared_secret 	input key material
-	 * @return 		TRUE if		secret derived successfully
+	 * @return 					TRUE if	secret derived successfully
 	 */
 	bool (*derive_handshake_secret)(tls_crypto_t *this, chunk_t *shared_secret);
 
