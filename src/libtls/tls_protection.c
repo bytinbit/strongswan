@@ -65,6 +65,23 @@ struct private_tls_protection_t {
 	tls_aead_t *aead_out;
 };
 
+/**
+ * Decrypt incoming payload
+ */
+static bool decrypt_payload(private_tls_protection_t *this,
+                            tls_content_type_t *type, chunk_t *data)
+{
+	if (this->aead_in)
+	{
+		if (!this->aead_in->decrypt(this->aead_in, this->version,
+		                            type, this->seq_in, data))
+		{
+			return false;
+		}
+	}
+	return true;
+}
+
 METHOD(tls_protection_t, process, status_t,
 	private_tls_protection_t *this, tls_content_type_t type, chunk_t data)
 {
@@ -75,16 +92,11 @@ METHOD(tls_protection_t, process, status_t,
 
 	if (this-> version < TLS_1_3)
 	{
-		if (this->aead_in)
+		if(!decrypt_payload(this, &type, &data))
 		{
-			// TODO: Code Duplication => extract function
-			if (!this->aead_in->decrypt(this->aead_in, this->version,
-			                            &type, this->seq_in, &data))
-			{
-				DBG1(DBG_TLS, "TLS record decryption failed");
-				this->alert->add(this->alert, TLS_FATAL, TLS_BAD_RECORD_MAC);
-				return NEED_MORE;
-			}
+			DBG1(DBG_TLS, "TLS record decryption for legacy TLS failed");
+			this->alert->add(this->alert, TLS_FATAL, TLS_BAD_RECORD_MAC);
+			return NEED_MORE;
 		}
 
 		if (type == TLS_CHANGE_CIPHER_SPEC)
@@ -104,15 +116,11 @@ METHOD(tls_protection_t, process, status_t,
 		}
 		if (type == TLS_APPLICATION_DATA)
 		{
-			if (this->aead_in)
+			if(!decrypt_payload(this, &type, &data))
 			{
-				if (!this->aead_in->decrypt(this->aead_in, this->version,
-				                            &type, this->seq_in, &data))
-				{
-					DBG1(DBG_TLS, "TLS record decryption failed");
-					this->alert->add(this->alert, TLS_FATAL, TLS_BAD_RECORD_MAC);
-					return NEED_MORE;
-				}
+				DBG1(DBG_TLS, "TLS record decryption failed");
+				this->alert->add(this->alert, TLS_FATAL, TLS_BAD_RECORD_MAC);
+				return NEED_MORE;
 			}
 			this->seq_in++;
 		}

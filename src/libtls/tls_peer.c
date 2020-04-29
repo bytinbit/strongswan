@@ -432,7 +432,8 @@ static status_t process_certificate(private_tls_peer_t *this,
 	certs = bio_reader_create(data);
 	while (certs->remaining(certs))
 	{
-		if (certs->remaining(certs) == 2 && this->tls->get_version_max(this->tls) > TLS_1_2)
+		if (certs->remaining(certs) == 2 &&
+		this->tls->get_version_max(this->tls) > TLS_1_2)
 		{
 			if (!certs->read_data16(certs, &data))
 			{
