@@ -320,8 +320,6 @@ static status_t process_encrypted_extensions(private_tls_peer_t *this,
 		bio_reader_t *extension_reader = bio_reader_create(ext);
 
 		while (offset < ext.len)
-			/* TODO how to test extensions that I don't receive in OpenSSL?
-			 * Also: Magic Number 4*/
 		{
 			chunk_t extension_payload = chunk_empty;
 			extension_reader->read_uint16(extension_reader, &extension_type);
@@ -342,16 +340,18 @@ static status_t process_encrypted_extensions(private_tls_peer_t *this,
 				case TLS_EXT_USE_SRTP:
 				case TLS_EXT_HEARTBEAT:
 				case TLS_EXT_APPLICATION_LAYER_PROTOCOL_NEGOTIATION:
-				case TLS_CLIENT_CERTIFICATE_TYPE:
 				case TLS_SERVER_CERTIFICATE_TYPE:
 					this->state = STATE_ENCRYPTED_EXTENSIONS_RECEIVED;
+					extension_reader->destroy(extension_reader);
 					break;
 				default:
 					DBG1(DBG_TLS, "received forbidden EncryptedExtensions");
 					this->alert->add(this->alert, TLS_FATAL, TLS_ILLEGAL_PARAMETER);
+					extension_reader->destroy(extension_reader);
 					return NEED_MORE;
 			}
 		}
+
 	}
 	return NEED_MORE;
 }
@@ -407,6 +407,21 @@ static status_t process_certificate(private_tls_peer_t *this,
 	this->crypto->append_handshake(this->crypto,
 								   TLS_CERTIFICATE, reader->peek(reader));
 
+	if (this->tls->get_version_max(this->tls) > TLS_1_2)
+	{
+		if (!reader->read_data8(reader, &data))
+		{
+			DBG1(DBG_TLS, "certificate request context invalid");
+			this->alert->add(this->alert, TLS_FATAL, TLS_DECODE_ERROR);
+			return NEED_MORE;
+		}
+		if (data.len > 0)
+		{
+			DBG1(DBG_TLS, "certificate request context available,"
+				 "but CertificateRequest not received");
+		}
+	}
+
 	if (!reader->read_data24(reader, &data))
 	{
 		DBG1(DBG_TLS, "certificate message header invalid");
@@ -416,6 +431,16 @@ static status_t process_certificate(private_tls_peer_t *this,
 	certs = bio_reader_create(data);
 	while (certs->remaining(certs))
 	{
+		if (certs->remaining(certs) == 2 && this->tls->get_version_max(this->tls) > TLS_1_2)
+		{
+			if (!certs->read_data16(certs, &data))
+			{
+				DBG1(DBG_TLS, "reading extension field of certificate failed", &data);
+				this->alert->add(this->alert, TLS_FATAL, TLS_DECODE_ERROR);
+				return NEED_MORE;
+			}
+			break;
+		}
 		if (!certs->read_data24(certs, &data))
 		{
 			DBG1(DBG_TLS, "certificate message invalid");
@@ -840,24 +865,16 @@ METHOD(tls_handshake_t, process, status_t,
 			expected = TLS_ENCRYPTED_EXTENSIONS;
 			break;
 		case STATE_HELLO_RECEIVED:
-			if (type == TLS_CERTIFICATE)
-			{
-				return process_certificate(this, reader);
-			}
-			expected = TLS_CERTIFICATE;
-			break;
 		case STATE_ENCRYPTED_EXTENSIONS_RECEIVED:
-			DBG2(DBG_TLS, "\tState Encrypted Extensions Received");
 			if (type == TLS_CERTIFICATE)
 			{
 				return process_certificate(this, reader);
 			}
-			expected = TLS_CERTIFICATE;
+				expected = TLS_CERTIFICATE;
 			break;
-
-
 		/* end new states */
 		case STATE_CERT_RECEIVED:
+			DBG2(DBG_TLS, "\tState Cert Received Received");
 			if (type == TLS_SERVER_KEY_EXCHANGE)
 			{
 				return process_key_exchange(this, reader);
