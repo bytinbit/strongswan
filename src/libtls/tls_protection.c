@@ -72,10 +72,12 @@ METHOD(tls_protection_t, process, status_t,
 	{	/* don't accept more input, fatal error occurred */
 		return NEED_MORE;
 	}
-	if (type != TLS_CHANGE_CIPHER_SPEC)
+
+	if (this-> version < TLS_1_3)
 	{
 		if (this->aead_in)
 		{
+			// TODO: Code Duplication => extract function
 			if (!this->aead_in->decrypt(this->aead_in, this->version,
 			                            &type, this->seq_in, &data))
 			{
@@ -84,9 +86,7 @@ METHOD(tls_protection_t, process, status_t,
 				return NEED_MORE;
 			}
 		}
-	}
 
-	if (this->version < TLS_1_3) {
 		if (type == TLS_CHANGE_CIPHER_SPEC)
 		{
 			this->seq_in = 0;
@@ -95,6 +95,28 @@ METHOD(tls_protection_t, process, status_t,
 		{
 			this->seq_in++;
 		}
+	}
+	else
+	{
+		if (type == TLS_HANDSHAKE)
+		{
+			this->seq_in = 0;
+		}
+		if (type == TLS_APPLICATION_DATA)
+		{
+			if (this->aead_in)
+			{
+				if (!this->aead_in->decrypt(this->aead_in, this->version,
+				                            &type, this->seq_in, &data))
+				{
+					DBG1(DBG_TLS, "TLS record decryption failed");
+					this->alert->add(this->alert, TLS_FATAL, TLS_BAD_RECORD_MAC);
+					return NEED_MORE;
+				}
+			}
+			this->seq_in++;
+		}
+
 	}
 	return this->compression->process(this->compression, type, data);
 
