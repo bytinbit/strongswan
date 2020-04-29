@@ -43,6 +43,7 @@ typedef enum {
 	STATE_ENCRYPTED_EXTENSIONS_RECEIVED,
 	STATE_CIPHERSPEC13_RECEIVED,
 	STATE_HELLO13_RECEIVED,
+	STATE_VERIFY_RECEIVED,
 
 } peer_state_t;
 
@@ -487,6 +488,16 @@ static status_t process_certificate(private_tls_peer_t *this,
 }
 
 /**
+ *  Process a certificate verify message
+ */
+static status_t process_certificate_verify(private_tls_peer_t *this, bio_reader_t *reader)
+{
+	DBG2(DBG_TLS, "\tWe should process now certificate verify");
+	this->state = STATE_VERIFY_RECEIVED;
+	return NEED_MORE;
+}
+
+/**
  * Find a trusted public key to encrypt/verify key exchange data
  */
 static public_key_t *find_public_key(private_tls_peer_t *this)
@@ -854,7 +865,6 @@ METHOD(tls_handshake_t, process, status_t,
 			}
 			expected = TLS_SERVER_HELLO;
 			break;
-		/* TODO new states in TLS 1.3 */
 		case STATE_CIPHERSPEC13_RECEIVED:
 			/* fall through since ChangeCipherspec is only a dummy in TLS 1.3 */
 		case STATE_HELLO13_RECEIVED:
@@ -870,14 +880,23 @@ METHOD(tls_handshake_t, process, status_t,
 			{
 				return process_certificate(this, reader);
 			}
-				expected = TLS_CERTIFICATE;
+			expected = TLS_CERTIFICATE;
 			break;
-		/* end new states */
 		case STATE_CERT_RECEIVED:
-			DBG2(DBG_TLS, "\tState Cert Received Received");
-			if (type == TLS_SERVER_KEY_EXCHANGE)
+			if (this->tls->get_version_max(this->tls) > TLS_1_2)
 			{
-				return process_key_exchange(this, reader);
+				if (type == TLS_CERTIFICATE_VERIFY)
+				{
+					return process_certificate_verify(this, reader);
+				}
+				expected = TLS_CERTIFICATE_VERIFY;
+			}
+			else
+			{
+				if (type == TLS_SERVER_KEY_EXCHANGE)
+				{
+					return process_key_exchange(this, reader);
+				}
 			}
 			/* fall through since TLS_SERVER_KEY_EXCHANGE is optional */
 		case STATE_KEY_EXCHANGE_RECEIVED:
