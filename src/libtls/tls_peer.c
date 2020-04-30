@@ -211,7 +211,6 @@ static status_t process_server_hello(private_tls_peer_t *this,
 
 				if(key_type != CURVE_25519 && !this->dh->set_other_public_value(this->dh, ext_key_share))
 				{
-
 					DBG2(DBG_TLS, "server key share unable to save");
 				}
 
@@ -280,11 +279,6 @@ static status_t process_server_hello(private_tls_peer_t *this,
 				&shared_secret))
 			{
 				DBG2(DBG_TLS, "Derive handshake secret failed");
-			}
-			else
-			{
-				DBG2(DBG_TLS, "Derive handshake secrets success");
-
 			}
 		}
 
