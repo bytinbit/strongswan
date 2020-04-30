@@ -43,7 +43,7 @@ typedef enum {
 	STATE_ENCRYPTED_EXTENSIONS_RECEIVED,
 	STATE_CIPHERSPEC13_RECEIVED,
 	STATE_HELLO13_RECEIVED,
-	STATE_VERIFY_RECEIVED,
+	STATE_CERT_VERIFY_RECEIVED,
 
 } peer_state_t;
 
@@ -401,7 +401,7 @@ static status_t process_certificate(private_tls_peer_t *this,
 
 	this->crypto->append_handshake(this->crypto,
 								   TLS_CERTIFICATE, reader->peek(reader));
-	
+
 	if (this->tls->get_version_max(this->tls) > TLS_1_2)
 	{
 		if (!reader->read_data8(reader, &data))
@@ -416,6 +416,7 @@ static status_t process_certificate(private_tls_peer_t *this,
 				 "but CertificateRequest not received");
 		}
 	}
+	// TODO verschachtelte Certs
 
 	if (!reader->read_data24(reader, &data))
 	{
@@ -483,12 +484,60 @@ static status_t process_certificate(private_tls_peer_t *this,
 }
 
 /**
- *  Process a certificate verify message
+ *  Process Certificate verify
  */
-static status_t process_certificate_verify(private_tls_peer_t *this, bio_reader_t *reader)
+static status_t process_cert_verify(private_tls_peer_t *this,
+                                    bio_reader_t *reader)
 {
+	/**
 	DBG2(DBG_TLS, "\tWe should process now certificate verify");
 	this->state = STATE_VERIFY_RECEIVED;
+	return NEED_MORE;
+	*/
+	bool verified = FALSE;
+	enumerator_t *enumerator;
+	public_key_t *public;
+	auth_cfg_t *auth;
+	bio_reader_t *sig;
+
+	enumerator = lib->credmgr->create_public_enumerator(lib->credmgr,
+	                                                    KEY_ANY, this->server, this->server_auth, TRUE);
+	while (enumerator->enumerate(enumerator, &public, &auth))
+	{
+		sig = bio_reader_create(reader->peek(reader));
+		verified = this->crypto->verify_handshake(this->crypto, public, sig);
+		sig->destroy(sig);
+		if (verified)
+		{
+			this->server_auth->merge(this->server_auth, auth, FALSE);
+			break;
+		}
+		DBG1(DBG_TLS, "signature verification failed, trying another key");
+	}
+	enumerator->destroy(enumerator);
+
+	if (!verified)
+	{
+		DBG1(DBG_TLS, "no trusted certificate found for '%Y' to verify TLS peer",
+		     this->server);
+		/* TLS 1.3: Server auth always required
+		if (!this->server_auth_optional)
+		{	 server authentication is required
+			this->alert->add(this->alert, TLS_FATAL, TLS_CERTIFICATE_UNKNOWN);
+			return NEED_MORE;
+		}
+		*/
+		/* reset server identity, we couldn't authenticate it */
+		this->server->destroy(this->server);
+		this->peer = NULL;
+		this->state = STATE_KEY_EXCHANGE_RECEIVED;
+	}
+	else
+	{
+		this->state = STATE_CERT_VERIFY_RECEIVED;
+	}
+	this->crypto->append_handshake(this->crypto,
+	                               TLS_CERTIFICATE_VERIFY, reader->peek(reader));
 	return NEED_MORE;
 }
 
@@ -882,7 +931,7 @@ METHOD(tls_handshake_t, process, status_t,
 			{
 				if (type == TLS_CERTIFICATE_VERIFY)
 				{
-					return process_certificate_verify(this, reader);
+					return process_cert_verify(this, reader);
 				}
 				expected = TLS_CERTIFICATE_VERIFY;
 			}
@@ -904,13 +953,25 @@ METHOD(tls_handshake_t, process, status_t,
 			this->peer = NULL;
 			/* fall through since TLS_CERTIFICATE_REQUEST is optional */
 		case STATE_CERTREQ_RECEIVED:
-			if (type == TLS_SERVER_HELLO_DONE)
+			/* TODO: TLS 1.3: certreq received immediately prior to Finished */
+			if (this->tls->get_version_max(this->tls) < TLS_1_3)
 			{
-				return process_hello_done(this, reader);
+				if (type == TLS_SERVER_HELLO_DONE)
+				{
+					return process_hello_done(this, reader);
+				}
+				expected = TLS_SERVER_HELLO_DONE;
+				break;
 			}
-			expected = TLS_SERVER_HELLO_DONE;
-			break;
-
+			else
+			{
+				if (type == TLS_FINISHED)
+				{
+					return process_finished(this, reader);
+				}
+				expected = TLS_FINISHED;
+				break;
+			}
 		case STATE_CIPHERSPEC_CHANGED_IN:
 			if (type == TLS_FINISHED)
 			{
