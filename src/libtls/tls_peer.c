@@ -407,7 +407,7 @@ static status_t process_certificate(private_tls_peer_t *this,
 
 	this->crypto->append_handshake(this->crypto,
 								   TLS_CERTIFICATE, reader->peek(reader));
-
+	
 	if (this->tls->get_version_max(this->tls) > TLS_1_2)
 	{
 		if (!reader->read_data8(reader, &data))
@@ -432,17 +432,6 @@ static status_t process_certificate(private_tls_peer_t *this,
 	certs = bio_reader_create(data);
 	while (certs->remaining(certs))
 	{
-		if (certs->remaining(certs) == 2 &&
-		this->tls->get_version_max(this->tls) > TLS_1_2)
-		{
-			if (!certs->read_data16(certs, &data))
-			{
-				DBG1(DBG_TLS, "reading extension field of certificate failed", &data);
-				this->alert->add(this->alert, TLS_FATAL, TLS_DECODE_ERROR);
-				return NEED_MORE;
-			}
-			break;
-		}
 		if (!certs->read_data24(certs, &data))
 		{
 			DBG1(DBG_TLS, "certificate message invalid");
@@ -481,6 +470,17 @@ static status_t process_certificate(private_tls_peer_t *this,
 		{
 			DBG1(DBG_TLS, "parsing TLS certificate failed, skipped");
 			this->alert->add(this->alert, TLS_WARNING, TLS_BAD_CERTIFICATE);
+		}
+		if (certs->remaining(certs) == 2 &&
+			this->tls->get_version_max(this->tls) > TLS_1_2)
+		{
+			if (!certs->read_data16(certs, &data))
+			{
+				DBG1(DBG_TLS, "reading extension field of certificate failed", &data);
+				this->alert->add(this->alert, TLS_FATAL, TLS_DECODE_ERROR);
+				return NEED_MORE;
+			}
+			break;
 		}
 	}
 	certs->destroy(certs);
