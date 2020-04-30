@@ -416,8 +416,6 @@ static status_t process_certificate(private_tls_peer_t *this,
 				 "but CertificateRequest not received");
 		}
 	}
-	// TODO verschachtelte Certs
-
 	if (!reader->read_data24(reader, &data))
 	{
 		DBG1(DBG_TLS, "certificate message header invalid");
