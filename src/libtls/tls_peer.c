@@ -466,8 +466,7 @@ static status_t process_certificate(private_tls_peer_t *this,
 			DBG1(DBG_TLS, "parsing TLS certificate failed, skipped");
 			this->alert->add(this->alert, TLS_WARNING, TLS_BAD_CERTIFICATE);
 		}
-		if (certs->remaining(certs) == 2 &&
-			this->tls->get_version_max(this->tls) > TLS_1_2)
+		if (this->tls->get_version_max(this->tls) > TLS_1_2)
 		{
 			if (!certs->read_data16(certs, &data))
 			{
