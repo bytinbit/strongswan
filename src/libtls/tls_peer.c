@@ -298,6 +298,12 @@ static status_t process_encrypted_extensions(private_tls_peer_t *this,
 	chunk_t ext = chunk_empty;
 	int offset = 0;
 	uint16_t extension_type, extension_length;
+
+	// TODO? Appended for transcript hash
+	this->crypto->append_handshake(this->crypto,
+	                               TLS_ENCRYPTED_EXTENSIONS, reader->peek(reader));
+
+
 	if (!reader->read_uint16(reader, &length) ||
 		(reader->remaining(reader) && !reader->read_data16(reader, &ext)))
 	{
