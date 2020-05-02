@@ -463,6 +463,37 @@ METHOD(tls_hkdf_t, derive_iv, bool, private_tls_hkdf_t *this, bool is_server, si
 	return TRUE;
 }
 
+METHOD(tls_hkdf_t, derive_finished, bool, private_tls_hkdf_t *this, bool is_server, size_t length, chunk_t *finished)
+{
+	chunk_t label_name = chunk_from_str("tls13 finished");
+	chunk_t messages = chunk_empty;
+	this->L = length;
+
+	chunk_t result;
+
+	if (!expand_label(this, &this->okm, &label_name, &messages, length, &result))
+	{
+		DBG1(DBG_TLS, "unable to derive secret");
+		chunk_clear(&result);
+		return FALSE;
+	}
+
+	if (!finished)
+	{
+		DBG1(DBG_TLS, "no memory for finished provided");
+		return FALSE;
+	}
+
+	if (!write_key_to_caller_secret(this, &result, finished))
+	{
+		DBG1(DBG_TLS, "unable to write secret back to caller");
+		return FALSE;
+	}
+
+	chunk_clear(&result);
+	return TRUE;
+}
+
 METHOD(tls_hkdf_t, destroy, void,
 	   private_tls_hkdf_t *this)
 {
@@ -487,6 +518,7 @@ tls_hkdf_t *tls_hkdf_create(hash_algorithm_t hash_algorithm, chunk_t *psk)
 			.generate_secret = _generate_secret,
 			.derive_key = _derive_key,
 			.derive_iv = _derive_iv,
+			.derive_finished = _derive_finished,
 			.destroy = _destroy,
 		},
 		.phase = HKDF_PHASE_0,

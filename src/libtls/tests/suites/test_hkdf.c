@@ -413,6 +413,8 @@ START_TEST(test_ulfheim_traffic)
 }
 END_TEST
 
+// TODO add tests for CertificateVerify, Finished, Application Data key
+
 Suite *hkdf_suite_create()
 {
 	Suite *s;

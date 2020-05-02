@@ -88,6 +88,16 @@ struct tls_hkdf_t {
 	bool (*derive_iv)(tls_hkdf_t *this, bool is_server, size_t length, chunk_t *iv);
 
 	/**
+	 * Returns finished key of the Finished message.
+	 *
+	 * @param is_server			TRUE if server, FALSE if client derives IV
+	 * @param length			key length, in bytes
+	 * @param finished			key will be written into this chunk
+	 * @return					TRUE if secrets derived successfully
+	 */
+	bool (*derive_finished)(tls_hkdf_t *this, bool is_server, size_t length, chunk_t *finished);
+
+	/**
 	 * Destroy a tls_hkdf_t
 	 */
 	void (*destroy)(tls_hkdf_t *this);
