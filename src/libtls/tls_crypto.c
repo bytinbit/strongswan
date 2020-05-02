@@ -1850,25 +1850,7 @@ METHOD(tls_crypto_t, calculate_finished, bool,
 METHOD(tls_crypto_t, calculate_finished_tls13, bool,
        private_tls_crypto_t *this, chunk_t *out)
 {
-	// SERVER FINISHED
-	/*
-1. erweiterung für HKDF: label finished, neue method
-2. make finished_hash
-3. verify data
-	 finished_key = HKDF-Expand-Label(
-			key = server_handshake_traffic_secret, <= wie komme ich da dran?
-			label = "finished", <= existiert noch nicht
-			context = "",
-			len = 32)
-		finished_hash = SHA256(Client Hello ... Server Cert Verify)
-		verify_data = HMAC-SHA256(
-			key = finished_key,
-			msg = finished_hash)
-	 *
-	 */
-
 	chunk_t finished_key, finished_hash;
-
 
 	this->hkdf->derive_finished(this->hkdf, FALSE, 32, &finished_key);
 	if (!hash_data(this, this->handshake, &finished_hash))

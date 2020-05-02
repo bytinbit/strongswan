@@ -213,7 +213,6 @@ static status_t process_server_hello(private_tls_peer_t *this,
 				{
 					DBG2(DBG_TLS, "server key share unable to save");
 				}
-
 				break;
 			default:
 				continue;
@@ -901,7 +900,7 @@ static status_t process_finished(private_tls_peer_t *this, bio_reader_t *reader)
 		}
 		if (!chunk_equals(received, verify_data))
 		{
-			DBG1(DBG_TLS, "received server finished invalid\nreceived: %B\nverify_data: %B", &received, &verify_data);
+			DBG1(DBG_TLS, "received server finished invalid");
 			this->alert->add(this->alert, TLS_FATAL, TLS_DECRYPT_ERROR);
 			return NEED_MORE;
 		}
@@ -1411,16 +1410,33 @@ static status_t send_certificate_verify(private_tls_peer_t *this,
 static status_t send_finished(private_tls_peer_t *this,
 							  tls_handshake_type_t *type, bio_writer_t *writer)
 {
-	char buf[12];
+	DBG2(DBG_TLS, "\tWe're in send_finished!");
+	chunk_t verify_data;
 
-	if (!this->crypto->calculate_finished(this->crypto, "client finished", buf))
+	if (this->tls->get_version_max(this->tls) < TLS_1_3)
 	{
-		DBG1(DBG_TLS, "calculating client finished data failed");
-		this->alert->add(this->alert, TLS_FATAL, TLS_INTERNAL_ERROR);
-		return NEED_MORE;
-	}
+		char buf[12];
 
-	writer->write_data(writer, chunk_from_thing(buf));
+		if (!this->crypto->calculate_finished(this->crypto, "client finished", buf))
+		{
+			DBG1(DBG_TLS, "calculating client finished data for legacy TLS failed");
+			this->alert->add(this->alert, TLS_FATAL, TLS_INTERNAL_ERROR);
+			return NEED_MORE;
+		}
+
+		writer->write_data(writer, chunk_from_thing(buf));
+	}
+	else
+	{
+		if(!this->crypto->calculate_finished_tls13(this->crypto, &verify_data))
+		{
+			DBG1(DBG_TLS, "calculating client finished data failed");
+			this->alert->add(this->alert, TLS_FATAL, TLS_INTERNAL_ERROR);
+			return NEED_MORE;
+		}
+
+		writer->write_data(writer, verify_data);
+	}
 
 	*type = TLS_FINISHED;
 	this->state = STATE_FINISHED_SENT;
@@ -1453,6 +1469,7 @@ METHOD(tls_handshake_t, build, status_t,
 			{
 				return INVALID_STATE;
 			}
+		case STATE_FINISHED_RECEIVED: /* TLS 1.3 */
 		case STATE_CIPHERSPEC_CHANGED_OUT:
 			return send_finished(this, type, writer);
 		default:
