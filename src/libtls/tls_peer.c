@@ -557,6 +557,10 @@ static status_t process_cert_verify(private_tls_peer_t *this,
 	auth_cfg_t *auth;
 	bio_reader_t *sig;
 
+	/* Is this correct? */
+	//this->crypto->append_handshake(this->crypto,
+	//							   TLS_CERTIFICATE_VERIFY, reader->peek(reader));
+
 	enumerator = lib->credmgr->create_public_enumerator(lib->credmgr,
 	                                                    KEY_ANY, this->server, this->server_auth, TRUE);
 	while (enumerator->enumerate(enumerator, &public, &auth))

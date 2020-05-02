@@ -1683,7 +1683,7 @@ METHOD(tls_crypto_t, verify, bool,
 		uint8_t hash, alg;
 		chunk_t sig;
 
-		chunk_t foo = chunk_from_chars(
+		chunk_t static_sig_data = chunk_from_chars(
 			0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20,
 			0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20,
 			0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20,
@@ -1699,7 +1699,6 @@ METHOD(tls_crypto_t, verify, bool,
 			0x79, 0x00,
 		);
 
-		chunk_t transcript_hash;
 
 		if (!reader->read_uint8(reader, &hash) ||
 		!reader->read_uint8(reader, &alg) ||
@@ -1709,17 +1708,50 @@ METHOD(tls_crypto_t, verify, bool,
 			return FALSE;
 		}
 
-		/* TODO hash is an int not of type hash_algorith_t */
-		hasher_t *hasher = lib->crypto->create_hasher(lib->crypto, hash);
-		if (!hasher || !hasher->allocate_hash(hasher, data, &transcript_hash))
+		chunk_t fingerprint;
+		if (!key->get_fingerprint(key, KEYID_PUBKEY_SHA1, &fingerprint))
 		{
-			DBG2(DBG_TLS, "%N not supported", hash_algorithm_names, hash);
+			DBG2(DBG_TLS, "unable to fingerprint");
+		}
+		/*
+		 * should be: D6:C0:C1:28:9D:7F:10:2C:5C:45:EA:5E:CA:44:F6:DC:90:AD:8F:F4
+		 * $ openssl x509 -text -noout -inform pem -in www-google-com.pem
+		 *   check X509v3 Subject Key Identifier:
+		 */
+		DBG2(DBG_TLS, "pub_cert fingerprint: %B", &fingerprint);
+
+		chunk_t pub_cert;
+		if (!key->get_encoding(key, PUBKEY_ASN1_DER, &pub_cert))
+		{
+			DBG2(DBG_TLS, "unable to encode key");
+		}
+		DBG2(DBG_TLS, "pub_cert: %B", &pub_cert);
+		//chunk_t handshake_context_cert_to_hash = chunk_cat("cc", data, pub_cert);
+
+		/* TODO hash is an int not of type hash_algorith_t */
+/*
+		*/
+/* TODO Translate TLS_HASH 4 (SHA256) to HASHER_HASH 2 (SHA256) *//*
+
+		DBG2(DBG_TLS, "hash is = %d", 2);
+		DBG2(DBG_TLS, "HASH ALGORITHM IS %N", hash_algorithm_names, 2);
+		hasher_t *hasher = lib->crypto->create_hasher(lib->crypto, 2);
+		if (!hasher || !hasher->allocate_hash(hasher, baz, &transcript_hash))
+		{
+			DBG2(DBG_TLS, "%N not supported", hash_algorithm_names, 2);
 			return FALSE;
 		}
 		hasher->destroy(hasher);
+*/
+		chunk_t transcript_hash;
+		if (!hash_data(this, data, &transcript_hash))
+		{
+			DBG2(DBG_TLS, "Unable to hash");
+			return FALSE;
+		}
 
-		chunk_t bar = chunk_cat("cc", foo, transcript_hash);
-		DBG2(DBG_TLS, "bar = %B", &bar);
+		chunk_t static_sig_data_all = chunk_cat("cc", static_sig_data, transcript_hash);
+		DBG2(DBG_TLS, "static_sig_data_all = %B", &static_sig_data_all);
 		DBG2(DBG_TLS, "sig = %B", &sig);
 
 		scheme = hashsig_to_scheme(key->get_type(key), hash, alg);
@@ -1731,7 +1763,15 @@ METHOD(tls_crypto_t, verify, bool,
 			return FALSE;
 		}
 		//if (!key->verify(key, scheme, NULL, data, sig))
-		if (!key->verify(key, scheme, NULL, bar, sig))
+
+		/*
+		 * possible problems
+		 * - Certificate is wrongly used
+		 * - We forgot to append all handshakes
+		 * - We use the wrong HASH algorithm
+		 */
+
+		if (!key->verify(key, scheme, NULL, static_sig_data_all, sig))
 		{
 			DBG2(DBG_TLS, "verification failed :-(");
 			return FALSE;
