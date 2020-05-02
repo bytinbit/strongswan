@@ -492,80 +492,16 @@ static status_t process_certificate(private_tls_peer_t *this,
 static status_t process_cert_verify(private_tls_peer_t *this,
                                     bio_reader_t *reader)
 {
-	/*
-	 * 0. Read CertificateVerify hash algorithm
-	 * 1. Transcript Hash (handshake data so far and Server Certificate) based on previous hash algorithm
-	 * 2. Construct data blob to verify
-	 *   a) 64 x 0x20
-	 *   b) context string
-	 *   c) 0 separator
-	 *   d) Transcript Hash
-	 * 3. Encrypt with public key of server
-	 * 4. Verify equality of chunks
-	 *
-	 */
-	//chunk_t data = reader->peek(reader);
-	//DBG2(DBG_TLS, "cert_verify content is : %B", &data);
-
-/*
-	uint8_t hash_algorithm, signature_algorithm;
-	chunk_t signature;
-
-	*/
-/* TODO is this a valid hash algorithm? Did we send it as option? *//*
-
-	if (!reader->read_uint8(reader, &hash_algorithm))
-	{
-		DBG1(DBG_TLS, "error");
-	}
-	DBG2(DBG_TLS, "cert_verify hash algorithm : %d", hash_algorithm);
-
-	if (!reader->read_uint8(reader, &signature_algorithm))
-	{
-		DBG1(DBG_TLS, "error");
-	}
-	DBG2(DBG_TLS, "cert_verify signature algorithm : %d", signature_algorithm);
-
-	if (!reader->read_data16(reader, &signature))
-	{
-		DBG1(DBG_TLS, "error");
-	}
-	DBG2(DBG_TLS, "cert_verify signature data : %B", &signature);
-*/
-
-
-
-/*
-	if (!reader->read_data(reader, &data))
-	{
-		DBG1(DBG_TLS, "certificate message header invalid");
-		this->alert->add(this->alert, TLS_FATAL, TLS_DECODE_ERROR);
-		return NEED_MORE;
-	}
-*/
-
-
-
-	/**
-	DBG2(DBG_TLS, "\tWe should process now certificate verify");
-	this->state = STATE_VERIFY_RECEIVED;
-	return NEED_MORE;
-	*/
 	bool verified = FALSE;
 	enumerator_t *enumerator;
 	public_key_t *public;
 	auth_cfg_t *auth;
 	bio_reader_t *sig;
 
-	/* Is this correct? */
-	//this->crypto->append_handshake(this->crypto,
-	//							   TLS_CERTIFICATE_VERIFY, reader->peek(reader));
-
 	enumerator = lib->credmgr->create_public_enumerator(lib->credmgr,
 	                                                    KEY_ANY, this->server, this->server_auth, TRUE);
 	while (enumerator->enumerate(enumerator, &public, &auth))
 	{
-		DBG2(DBG_TLS, "wooooohoooooo -------------------------------");
 		sig = bio_reader_create(reader->peek(reader));
 		verified = this->crypto->verify_handshake(this->crypto, public, sig);
 		sig->destroy(sig);
@@ -582,17 +518,6 @@ static status_t process_cert_verify(private_tls_peer_t *this,
 	{
 		DBG1(DBG_TLS, "no trusted certificate found for '%Y' to verify TLS peer",
 		     this->server);
- 		/* TLS 1.3: Server auth always required */
- 		/*
-		if (!this->server_auth_optional)
-		{	 server authentication is required
-			this->alert->add(this->alert, TLS_FATAL, TLS_CERTIFICATE_UNKNOWN);
-			return NEED_MORE;
-		}
- 		*/
-
-		/* reset server identity, we couldn't authenticate it */
-
 		this->server->destroy(this->server);
 		this->peer = NULL;
 		this->state = STATE_KEY_EXCHANGE_RECEIVED;
@@ -934,27 +859,54 @@ static status_t process_hello_done(private_tls_peer_t *this,
  */
 static status_t process_finished(private_tls_peer_t *this, bio_reader_t *reader)
 {
-	chunk_t received;
+	chunk_t received, verify_data;
 	char buf[12];
 
-	if (!reader->read_data(reader, sizeof(buf), &received))
+	if (this->tls->get_version_max(this->tls) < TLS_1_3)
 	{
-		DBG1(DBG_TLS, "received server finished too short");
-		this->alert->add(this->alert, TLS_FATAL, TLS_DECODE_ERROR);
-		return NEED_MORE;
+		if (!reader->read_data(reader, sizeof(buf), &received))
+		{
+			DBG1(DBG_TLS, "received server finished too short");
+			this->alert->add(this->alert, TLS_FATAL, TLS_DECODE_ERROR);
+			return NEED_MORE;
+		}
+		if (!this->crypto->calculate_finished(this->crypto, "server finished", buf))
+		{
+			DBG1(DBG_TLS, "calculating server finished for legacy TLS failed");
+			this->alert->add(this->alert, TLS_FATAL, TLS_INTERNAL_ERROR);
+			return NEED_MORE;
+		}
+		if (!chunk_equals_const(received, chunk_from_thing(buf)))
+		{
+			DBG1(DBG_TLS, "received server finished for legacy TLS invalid");
+			this->alert->add(this->alert, TLS_FATAL, TLS_DECRYPT_ERROR);
+			return NEED_MORE;
+		}
 	}
-	if (!this->crypto->calculate_finished(this->crypto, "server finished", buf))
+	else
 	{
-		DBG1(DBG_TLS, "calculating server finished failed");
-		this->alert->add(this->alert, TLS_FATAL, TLS_INTERNAL_ERROR);
-		return NEED_MORE;
+		/* TODO: we allocate here size for sha256 (32 bytes) only,
+		 * but should also think of sha384 that has a different output size */
+		if (!reader->read_data(reader, 32, &received))
+		{
+			DBG1(DBG_TLS, "received server finished too short");
+			this->alert->add(this->alert, TLS_FATAL, TLS_DECODE_ERROR);
+			return NEED_MORE;
+		}
+		if (!this->crypto->calculate_finished_tls13(this->crypto, &verify_data))
+		{
+			DBG1(DBG_TLS, "calculating server finished failed");
+			this->alert->add(this->alert, TLS_FATAL, TLS_INTERNAL_ERROR);
+			return NEED_MORE;
+		}
+		if (!chunk_equals(received, verify_data))
+		{
+			DBG1(DBG_TLS, "received server finished invalid\nreceived: %B\nverify_data: %B", &received, &verify_data);
+			this->alert->add(this->alert, TLS_FATAL, TLS_DECRYPT_ERROR);
+			return NEED_MORE;
+		}
 	}
-	if (!chunk_equals_const(received, chunk_from_thing(buf)))
-	{
-		DBG1(DBG_TLS, "received server finished invalid");
-		this->alert->add(this->alert, TLS_FATAL, TLS_DECRYPT_ERROR);
-		return NEED_MORE;
-	}
+
 	this->state = STATE_FINISHED_RECEIVED;
 	this->crypto->append_handshake(this->crypto, TLS_FINISHED, received);
 
@@ -999,6 +951,7 @@ METHOD(tls_handshake_t, process, status_t,
 					return process_cert_verify(this, reader);
 				}
 				expected = TLS_CERTIFICATE_VERIFY;
+				break;
 			}
 			else
 			{
@@ -1018,25 +971,22 @@ METHOD(tls_handshake_t, process, status_t,
 			this->peer = NULL;
 			/* fall through since TLS_CERTIFICATE_REQUEST is optional */
 		case STATE_CERTREQ_RECEIVED:
-			/* TODO: TLS 1.3: certreq received immediately prior to Finished */
-			if (this->tls->get_version_max(this->tls) < TLS_1_3)
+			if (type == TLS_SERVER_HELLO_DONE)
 			{
-				if (type == TLS_SERVER_HELLO_DONE)
-				{
-					return process_hello_done(this, reader);
-				}
-				expected = TLS_SERVER_HELLO_DONE;
-				break;
+				return process_hello_done(this, reader);
 			}
-			else
+			expected = TLS_SERVER_HELLO_DONE;
+			break;
+		case STATE_CERT_VERIFY_RECEIVED:
+			if (this->tls->get_version_max(this->tls) > TLS_1_2)
 			{
 				if (type == TLS_FINISHED)
 				{
 					return process_finished(this, reader);
 				}
-				expected = TLS_FINISHED;
-				break;
 			}
+			expected = TLS_FINISHED;
+			break;
 		case STATE_CIPHERSPEC_CHANGED_IN:
 			if (type == TLS_FINISHED)
 			{
@@ -1044,7 +994,6 @@ METHOD(tls_handshake_t, process, status_t,
 			}
 			expected = TLS_FINISHED;
 			break;
-
 		default:
 			DBG1(DBG_TLS, "TLS %N not expected in current state",
 			     tls_handshake_type_names, type);

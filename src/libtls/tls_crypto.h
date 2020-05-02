@@ -514,13 +514,21 @@ struct tls_crypto_t {
 							 bio_reader_t *reader);
 
 	/**
-	 * Calculate the data of a TLS finished message.
+	 * Calculate the data of a legacyTLS finished message.
 	 *
 	 * @param label			ASCII label to use for calculation
 	 * @param out			buffer to write finished data to
 	 * @return				TRUE if calculation successful
 	 */
 	bool (*calculate_finished)(tls_crypto_t *this, char *label, char out[12]);
+
+	/**
+	 * Calculate the data of a TLS finished message.
+	 *
+	 * @param out			buffer to write finished data to
+	 * @return				TRUE if calculation successful
+	 */
+	bool (*calculate_finished_tls13)(tls_crypto_t *this, chunk_t *out);
 
 	/**
 	 * Derive the master secret, MAC and encryption keys.

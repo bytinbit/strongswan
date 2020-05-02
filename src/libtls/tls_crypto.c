@@ -1676,12 +1676,11 @@ METHOD(tls_crypto_t, verify, bool,
 	private_tls_crypto_t *this, public_key_t *key, bio_reader_t *reader,
 	chunk_t data)
 {
-	DBG2(DBG_TLS, "Hello Verify! #######################################3");
 	if (this->tls->get_version_max(this->tls) == TLS_1_3)
 	{
 		signature_scheme_t scheme = SIGN_UNKNOWN;
 		uint8_t hash, alg;
-		chunk_t sig;
+		chunk_t sig, transcript_hash, static_sig_data_all;
 
 		chunk_t static_sig_data = chunk_from_chars(
 			0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20,
@@ -1699,87 +1698,52 @@ METHOD(tls_crypto_t, verify, bool,
 			0x79, 0x00,
 		);
 
-
 		if (!reader->read_uint8(reader, &hash) ||
-		!reader->read_uint8(reader, &alg) ||
-		!reader->read_data16(reader, &sig))
+			!reader->read_uint8(reader, &alg) ||
+			!reader->read_data16(reader, &sig))
 		{
 			DBG1(DBG_TLS, "received invalid signature");
 			return FALSE;
 		}
 
-		chunk_t fingerprint;
-		if (!key->get_fingerprint(key, KEYID_PUBKEY_SHA1, &fingerprint))
-		{
-			DBG2(DBG_TLS, "unable to fingerprint");
-		}
-		/*
-		 * should be: D6:C0:C1:28:9D:7F:10:2C:5C:45:EA:5E:CA:44:F6:DC:90:AD:8F:F4
-		 * $ openssl x509 -text -noout -inform pem -in www-google-com.pem
-		 *   check X509v3 Subject Key Identifier:
-		 */
-		DBG2(DBG_TLS, "pub_cert fingerprint: %B", &fingerprint);
-
-		chunk_t pub_cert;
-		if (!key->get_encoding(key, PUBKEY_ASN1_DER, &pub_cert))
-		{
-			DBG2(DBG_TLS, "unable to encode key");
-		}
-		DBG2(DBG_TLS, "pub_cert: %B", &pub_cert);
-		//chunk_t handshake_context_cert_to_hash = chunk_cat("cc", data, pub_cert);
-
-		/* TODO hash is an int not of type hash_algorith_t */
-/*
-		*/
-/* TODO Translate TLS_HASH 4 (SHA256) to HASHER_HASH 2 (SHA256) *//*
-
-		DBG2(DBG_TLS, "hash is = %d", 2);
-		DBG2(DBG_TLS, "HASH ALGORITHM IS %N", hash_algorithm_names, 2);
-		hasher_t *hasher = lib->crypto->create_hasher(lib->crypto, 2);
-		if (!hasher || !hasher->allocate_hash(hasher, baz, &transcript_hash))
-		{
-			DBG2(DBG_TLS, "%N not supported", hash_algorithm_names, 2);
-			return FALSE;
-		}
-		hasher->destroy(hasher);
-*/
-		chunk_t transcript_hash;
 		if (!hash_data(this, data, &transcript_hash))
 		{
-			DBG2(DBG_TLS, "Unable to hash");
+			DBG1(DBG_TLS, "Unable to hash");
 			return FALSE;
 		}
 
-		chunk_t static_sig_data_all = chunk_cat("cc", static_sig_data, transcript_hash);
-		DBG2(DBG_TLS, "static_sig_data_all = %B", &static_sig_data_all);
-		DBG2(DBG_TLS, "sig = %B", &sig);
-
+		static_sig_data_all = chunk_cat("cc", static_sig_data, transcript_hash);
 		scheme = hashsig_to_scheme(key->get_type(key), hash, alg);
 		if (scheme == SIGN_UNKNOWN)
 		{
 			DBG1(DBG_TLS, "signature algorithms %N/%N not supported",
-			tls_hash_algorithm_names, hash,
-			tls_signature_algorithm_names, alg);
+			     tls_hash_algorithm_names, hash,
+			     tls_signature_algorithm_names, alg);
 			return FALSE;
 		}
-		//if (!key->verify(key, scheme, NULL, data, sig))
-
-		/*
-		 * possible problems
-		 * - Certificate is wrongly used
-		 * - We forgot to append all handshakes
-		 * - We use the wrong HASH algorithm
-		 */
-
 		if (!key->verify(key, scheme, NULL, static_sig_data_all, sig))
 		{
-			DBG2(DBG_TLS, "verification failed :-(");
+			DBG1(DBG_TLS, "verification of signature");
 			return FALSE;
 		}
-		DBG2(DBG_TLS, "verified signature with %N/%N",
-			tls_hash_algorithm_names, hash, tls_signature_algorithm_names, alg);
+		DBG2(DBG_TLS,
+		     "verified signature with %N/%N",
+		     tls_hash_algorithm_names,
+		     hash,
+		     tls_signature_algorithm_names,
+		     alg);
 	}
-	if (this->tls->get_version_max(this->tls) == TLS_1_2)
+	/* TLS 1.3: Server auth always required */
+	/*
+   if (!this->server_auth_optional)
+   {	 server authentication is required
+	   this->alert->add(this->alert, TLS_FATAL, TLS_CERTIFICATE_UNKNOWN);
+	   return NEED_MORE;
+   }
+	*/
+
+	/* reset server identity, we couldn't authenticate it */
+	else if (this->tls->get_version_max(this->tls) == TLS_1_2)
 	{
 		signature_scheme_t scheme = SIGN_UNKNOWN;
 		uint8_t hash, alg;
@@ -1880,6 +1844,50 @@ METHOD(tls_crypto_t, calculate_finished, bool,
 		return FALSE;
 	}
 	free(seed.ptr);
+	return TRUE;
+}
+
+METHOD(tls_crypto_t, calculate_finished_tls13, bool,
+       private_tls_crypto_t *this, chunk_t *out)
+{
+	// SERVER FINISHED
+	/*
+1. erweiterung für HKDF: label finished, neue method
+2. make finished_hash
+3. verify data
+	 finished_key = HKDF-Expand-Label(
+			key = server_handshake_traffic_secret, <= wie komme ich da dran?
+			label = "finished", <= existiert noch nicht
+			context = "",
+			len = 32)
+		finished_hash = SHA256(Client Hello ... Server Cert Verify)
+		verify_data = HMAC-SHA256(
+			key = finished_key,
+			msg = finished_hash)
+	 *
+	 */
+
+	chunk_t finished_key, finished_hash;
+
+
+	this->hkdf->derive_finished(this->hkdf, FALSE, 32, &finished_key);
+	if (!hash_data(this, this->handshake, &finished_hash))
+	{
+		DBG1(DBG_TLS, "creating hash of handshake failed");
+	}
+
+	prf_t *prf = lib->crypto->create_prf(lib->crypto, PRF_HMAC_SHA2_256);
+	if(!prf->set_key(prf, finished_key))
+	{
+		DBG1(DBG_TLS, "setting key for HMAC failed");
+	}
+
+	if (!prf->allocate_bytes(prf, finished_hash, out))
+	{
+		DBG1(DBG_TLS, "generating hash for HMAC failed");
+	}
+
+	prf->destroy(prf);
 	return TRUE;
 }
 
@@ -2155,6 +2163,7 @@ tls_crypto_t *tls_crypto_create(tls_t *tls, tls_cache_t *cache)
 			.sign_handshake = _sign_handshake,
 			.verify_handshake = _verify_handshake,
 			.calculate_finished = _calculate_finished,
+            .calculate_finished_tls13 = _calculate_finished_tls13,
 			.derive_secrets = _derive_secrets,
 			.derive_handshake_secret = _derive_handshake_secret,
 			.resume_session = _resume_session,
