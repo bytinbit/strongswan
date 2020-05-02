@@ -486,6 +486,60 @@ static status_t process_certificate(private_tls_peer_t *this,
 static status_t process_cert_verify(private_tls_peer_t *this,
                                     bio_reader_t *reader)
 {
+	/*
+	 * 0. Read CertificateVerify hash algorithm
+	 * 1. Transcript Hash (handshake data so far and Server Certificate) based on previous hash algorithm
+	 * 2. Construct data blob to verify
+	 *   a) 64 x 0x20
+	 *   b) context string
+	 *   c) 0 separator
+	 *   d) Transcript Hash
+	 * 3. Encrypt with public key of server
+	 * 4. Verify equality of chunks
+	 *
+	 */
+	//chunk_t data = reader->peek(reader);
+	//DBG2(DBG_TLS, "cert_verify content is : %B", &data);
+
+/*
+	uint8_t hash_algorithm, signature_algorithm;
+	chunk_t signature;
+
+	*/
+/* TODO is this a valid hash algorithm? Did we send it as option? *//*
+
+	if (!reader->read_uint8(reader, &hash_algorithm))
+	{
+		DBG1(DBG_TLS, "error");
+	}
+	DBG2(DBG_TLS, "cert_verify hash algorithm : %d", hash_algorithm);
+
+	if (!reader->read_uint8(reader, &signature_algorithm))
+	{
+		DBG1(DBG_TLS, "error");
+	}
+	DBG2(DBG_TLS, "cert_verify signature algorithm : %d", signature_algorithm);
+
+	if (!reader->read_data16(reader, &signature))
+	{
+		DBG1(DBG_TLS, "error");
+	}
+	DBG2(DBG_TLS, "cert_verify signature data : %B", &signature);
+*/
+
+
+
+/*
+	if (!reader->read_data(reader, &data))
+	{
+		DBG1(DBG_TLS, "certificate message header invalid");
+		this->alert->add(this->alert, TLS_FATAL, TLS_DECODE_ERROR);
+		return NEED_MORE;
+	}
+*/
+
+
+
 	/**
 	DBG2(DBG_TLS, "\tWe should process now certificate verify");
 	this->state = STATE_VERIFY_RECEIVED;
@@ -501,6 +555,7 @@ static status_t process_cert_verify(private_tls_peer_t *this,
 	                                                    KEY_ANY, this->server, this->server_auth, TRUE);
 	while (enumerator->enumerate(enumerator, &public, &auth))
 	{
+		DBG2(DBG_TLS, "wooooohoooooo -------------------------------");
 		sig = bio_reader_create(reader->peek(reader));
 		verified = this->crypto->verify_handshake(this->crypto, public, sig);
 		sig->destroy(sig);
@@ -517,14 +572,17 @@ static status_t process_cert_verify(private_tls_peer_t *this,
 	{
 		DBG1(DBG_TLS, "no trusted certificate found for '%Y' to verify TLS peer",
 		     this->server);
-		/* TLS 1.3: Server auth always required
+ 		/* TLS 1.3: Server auth always required */
+ 		/*
 		if (!this->server_auth_optional)
 		{	 server authentication is required
 			this->alert->add(this->alert, TLS_FATAL, TLS_CERTIFICATE_UNKNOWN);
 			return NEED_MORE;
 		}
-		*/
+ 		*/
+
 		/* reset server identity, we couldn't authenticate it */
+
 		this->server->destroy(this->server);
 		this->peer = NULL;
 		this->state = STATE_KEY_EXCHANGE_RECEIVED;

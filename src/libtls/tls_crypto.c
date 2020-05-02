@@ -1676,7 +1676,70 @@ METHOD(tls_crypto_t, verify, bool,
 	private_tls_crypto_t *this, public_key_t *key, bio_reader_t *reader,
 	chunk_t data)
 {
-	if (this->tls->get_version_max(this->tls) >= TLS_1_2)
+	DBG2(DBG_TLS, "Hello Verify! #######################################3");
+	if (this->tls->get_version_max(this->tls) == TLS_1_3)
+	{
+		signature_scheme_t scheme = SIGN_UNKNOWN;
+		uint8_t hash, alg;
+		chunk_t sig;
+
+		chunk_t foo = chunk_from_chars(
+			0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20,
+			0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20,
+			0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20,
+			0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20,
+			0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20,
+			0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20,
+			0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20,
+			0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20,
+			0x54, 0x4c, 0x53, 0x20, 0x31, 0x2e, 0x33, 0x2c,
+			0x20, 0x73, 0x65, 0x72, 0x76, 0x65, 0x72, 0x20,
+			0x43, 0x65, 0x72, 0x74, 0x69, 0x66, 0x69, 0x63,
+			0x61, 0x74, 0x65, 0x56, 0x65, 0x72, 0x69, 0x66,
+			0x79, 0x00,
+		);
+
+		chunk_t transcript_hash;
+
+		if (!reader->read_uint8(reader, &hash) ||
+		!reader->read_uint8(reader, &alg) ||
+		!reader->read_data16(reader, &sig))
+		{
+			DBG1(DBG_TLS, "received invalid signature");
+			return FALSE;
+		}
+
+		/* TODO hash is an int not of type hash_algorith_t */
+		hasher_t *hasher = lib->crypto->create_hasher(lib->crypto, hash);
+		if (!hasher || !hasher->allocate_hash(hasher, data, &transcript_hash))
+		{
+			DBG2(DBG_TLS, "%N not supported", hash_algorithm_names, hash);
+			return FALSE;
+		}
+		hasher->destroy(hasher);
+
+		chunk_t bar = chunk_cat("cc", foo, transcript_hash);
+		DBG2(DBG_TLS, "bar = %B", &bar);
+		DBG2(DBG_TLS, "sig = %B", &sig);
+
+		scheme = hashsig_to_scheme(key->get_type(key), hash, alg);
+		if (scheme == SIGN_UNKNOWN)
+		{
+			DBG1(DBG_TLS, "signature algorithms %N/%N not supported",
+			tls_hash_algorithm_names, hash,
+			tls_signature_algorithm_names, alg);
+			return FALSE;
+		}
+		//if (!key->verify(key, scheme, NULL, data, sig))
+		if (!key->verify(key, scheme, NULL, bar, sig))
+		{
+			DBG2(DBG_TLS, "verification failed :-(");
+			return FALSE;
+		}
+		DBG2(DBG_TLS, "verified signature with %N/%N",
+			tls_hash_algorithm_names, hash, tls_signature_algorithm_names, alg);
+	}
+	if (this->tls->get_version_max(this->tls) == TLS_1_2)
 	{
 		signature_scheme_t scheme = SIGN_UNKNOWN;
 		uint8_t hash, alg;
@@ -2021,6 +2084,7 @@ METHOD(tls_crypto_t, destroy, void,
 	free(this->handshake.ptr);
 	free(this->msk.ptr);
 	DESTROY_IF(this->prf);
+	DESTROY_IF(this->hkdf);
 	free(this->suites);
 	free(this);
 }
