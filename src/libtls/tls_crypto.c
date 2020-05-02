@@ -1827,23 +1827,46 @@ METHOD(tls_crypto_t, verify_handshake, bool,
 METHOD(tls_crypto_t, calculate_finished, bool,
 	private_tls_crypto_t *this, char *label, char out[12])
 {
-	chunk_t seed;
+	if (this->tls->get_version_max(this->tls) < TLS_1_3)
+	{
+		chunk_t seed;
 
-	if (!this->prf)
-	{
-		return FALSE;
-	}
-	if (!hash_data(this, this->handshake, &seed))
-	{
-		return FALSE;
-	}
-	if (!this->prf->get_bytes(this->prf, label, seed, 12, out))
-	{
+		if (!this->prf)
+		{
+			return FALSE;
+		}
+		if (!hash_data(this, this->handshake, &seed))
+		{
+			return FALSE;
+		}
+		if (!this->prf->get_bytes(this->prf, label, seed, 12, out))
+		{
+			free(seed.ptr);
+			return FALSE;
+		}
 		free(seed.ptr);
+		return TRUE;
+	}
+	else
+	{
+		// SERVER FINISHED
+		/*
+	1. erweiterung für HKDF: label finished, neue method
+	2. make finished_hash
+	3. verify data
+		 finished_key = HKDF-Expand-Label(
+			    key = server_handshake_traffic_secret, <= wie komme ich da dran?
+			    label = "finished", <= existiert noch nicht
+			    context = "",
+			    len = 32)
+			finished_hash = SHA256(Client Hello ... Server Cert Verify)
+			verify_data = HMAC-SHA256(
+				key = finished_key,
+				msg = finished_hash)
+		 *
+		 */
 		return FALSE;
 	}
-	free(seed.ptr);
-	return TRUE;
 }
 
 METHOD(tls_crypto_t, calculate_finished_tls13, bool,
