@@ -41,6 +41,11 @@ struct private_tls_hkdf_t {
 	hkdf_phase phase;
 
 	/**
+	 * Last HKDF label that was used to generate secret.
+	 */
+	enum tls_hkdf_labels_t last_label_used;
+
+	/**
 	 * Hash algorithm used.
 	 */
 	hash_algorithm_t hash_algorithm;
@@ -316,6 +321,43 @@ static bool get_shared_label_keys(private_tls_hkdf_t *this, chunk_t label,
 {
 	chunk_t result;
 
+	switch (this->phase)
+	{
+		case HKDF_PHASE_2:
+			if (is_server && this->last_label_used == TLS_HKDF_S_HS_TRAFFIC)
+			{
+				break;
+			}
+			else if (this->last_label_used == TLS_HKDF_C_HS_TRAFFIC)
+			{
+				break;
+			}
+			else
+			{
+				DBG1(DBG_TLS, "in phase 2, last generated secret must either be"
+				  	 " TLS_HKDF_S_HS_TRAFFIC or TLS_HKDF_S_HS_TRAFFIC");
+				return FALSE;
+			}
+		case HKDF_PHASE_3:
+			if (is_server && this->last_label_used == TLS_HKDF_S_AP_TRAFFIC)
+			{
+				break;
+			}
+			else if (this->last_label_used == TLS_HKDF_C_AP_TRAFFIC)
+			{
+				break;
+			}
+			else
+			{
+				DBG1(DBG_TLS, "in phase 3, last generated secret must either be"
+				  " TLS_HKDF_S_AP_TRAFFIC or TLS_HKDF_S_AP_TRAFFIC");
+				return FALSE;
+			}
+		default:
+			DBG1(DBG_TLS, "not allowed to return secret in current phase");
+			return FALSE;
+	}
+
 	if (!expand_label(this, this->okm, label, chunk_empty, length, &result))
 	{
 		DBG1(DBG_TLS, "unable to derive secret");
@@ -376,6 +418,7 @@ METHOD(tls_hkdf_t, generate_secret, bool,
 			DBG1(DBG_TLS, "invalid HKDF label");
 			return FALSE;
 	}
+	this->last_label_used = label;
 
 	if (!derive_secret(this, chunk_from_str(hkdf_labels[label]), messages))
 	{
