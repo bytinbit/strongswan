@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2020 Pascal Knecht
  * Copyright (C) 2020 Méline Sieber
+ * HSR Hochschule fuer Technik Rapperswil
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -13,10 +14,11 @@
  * for more details.
  */
 
+#include "src/libtls/tls_hkdf.h"
 #include "test_suite.h"
+
 #include <test_runner.h>
 #include <utils/chunk.h>
-#include "src/libtls/tls_hkdf.h"
 
 START_TEST(test_ulfheim_handshake)
 {
@@ -68,7 +70,6 @@ START_TEST(test_ulfheim_handshake)
 	);
 
 	chunk_t ecdhe = chunk_from_chars(
-		/* df4a291baa1eb7cfa6934b29b474baad2697e29f1f920dcc77c8a0a088447624 */
 		0xdf, 0x4a, 0x29, 0x1b, 0xaa, 0x1e, 0xb7, 0xcf,
 		0xa6, 0x93, 0x4b, 0x29, 0xb4, 0x74, 0xba, 0xad,
 		0x26, 0x97, 0xe2, 0x9f, 0x1f, 0x92, 0x0d, 0xcc,
@@ -76,7 +77,6 @@ START_TEST(test_ulfheim_handshake)
 	);
 
 	chunk_t expected_client_handshake_traffic_secret = chunk_from_chars(
-		/* ff0e5b965291c608c1e8cd267eefc0afcc5e98a2786373f0db47b04786d72aea */
 		0xff, 0x0e, 0x5b, 0x96, 0x52, 0x91, 0xc6, 0x08,
 		0xc1, 0xe8, 0xcd, 0x26, 0x7e, 0xef, 0xc0, 0xaf,
 		0xcc, 0x5e, 0x98, 0xa2, 0x78, 0x63, 0x73, 0xf0,
@@ -84,7 +84,6 @@ START_TEST(test_ulfheim_handshake)
 	);
 
 	chunk_t expected_server_handshake_traffic_secret = chunk_from_chars(
-		/* a2067265e7f0652a923d5d72ab0467c46132eeb968b6a32d311c805868548814 */
 		0xa2, 0x06, 0x72, 0x65, 0xe7, 0xf0, 0x65, 0x2a,
 		0x92, 0x3d, 0x5d, 0x72, 0xab, 0x04, 0x67, 0xc4,
 		0x61, 0x32, 0xee, 0xb9, 0x68, 0xb6, 0xa3, 0x2d,
@@ -92,55 +91,50 @@ START_TEST(test_ulfheim_handshake)
 	);
 
 	chunk_t expected_client_handshake_key = chunk_from_chars(
-		/* 7154f314e6be7dc008df2c832baa1d39 */
 		0x71, 0x54, 0xf3, 0x14, 0xe6, 0xbe, 0x7d, 0xc0,
 		0x08, 0xdf, 0x2c, 0x83, 0x2b, 0xaa, 0x1d, 0x39,
 	);
 
 	chunk_t expected_client_handshake_iv = chunk_from_chars(
-		/* 71abc2cae4c699d47c600268 */
 		0x71, 0xab, 0xc2, 0xca, 0xe4, 0xc6, 0x99, 0xd4,
 		0x7c, 0x60, 0x02, 0x68,
 	);
 
 	chunk_t expected_server_handshake_key = chunk_from_chars(
-		/* 844780a7acad9f980fa25c114e43402a */
 		0x84, 0x47, 0x80, 0xa7, 0xac, 0xad, 0x9f, 0x98,
 		0x0f, 0xa2, 0x5c, 0x11, 0x4e, 0x43, 0x40, 0x2a,
 	);
 
 	chunk_t expected_server_handshake_iv = chunk_from_chars(
-		/* 4c042ddc120a38d1417fc815 */
 		0x4c, 0x04, 0x2d, 0xdc, 0x12, 0x0a, 0x38, 0xd1,
 		0x41, 0x7f, 0xc8, 0x15,
 	);
 
 	chunk_t c_secret, c_key, c_iv, s_secret, s_key, s_iv;
 
-	tls_hkdf_t *hkdf = tls_hkdf_create(HASH_SHA256, NULL);
-
-	ck_assert(hkdf->set_shared_secret(hkdf, &ecdhe));
+	tls_hkdf_t *hkdf = tls_hkdf_create(HASH_SHA256, chunk_empty);
+	hkdf->set_shared_secret(hkdf, ecdhe);
 
 	/* Generate client handshake traffic secret */
-	ck_assert(hkdf->generate_secret(hkdf, TLS_HKDF_C_HS_TRAFFIC, &handshake, &c_secret));
-	ck_assert(chunk_equals(expected_client_handshake_traffic_secret, c_secret));
+	ck_assert(hkdf->generate_secret(hkdf, TLS_HKDF_C_HS_TRAFFIC, handshake, &c_secret));
+	ck_assert_chunk_eq(expected_client_handshake_traffic_secret, c_secret);
 
 	ck_assert(hkdf->derive_key(hkdf, FALSE, 16, &c_key));
-	ck_assert(chunk_equals(expected_client_handshake_key, c_key));
+	ck_assert_chunk_eq(expected_client_handshake_key, c_key);
 
 	ck_assert(hkdf->derive_iv(hkdf, FALSE, 12, &c_iv));
-	ck_assert(chunk_equals(expected_client_handshake_iv, c_iv));
+	ck_assert_chunk_eq(expected_client_handshake_iv, c_iv);
 
 
 	/* Generate server handshake traffic secret */
-	ck_assert(hkdf->generate_secret(hkdf, TLS_HKDF_S_HS_TRAFFIC, &handshake, &s_secret));
-	ck_assert(chunk_equals(expected_server_handshake_traffic_secret, s_secret));
+	ck_assert(hkdf->generate_secret(hkdf, TLS_HKDF_S_HS_TRAFFIC, handshake, &s_secret));
+	ck_assert_chunk_eq(expected_server_handshake_traffic_secret, s_secret);
 
 	ck_assert(hkdf->derive_key(hkdf, TRUE, 16, &s_key));
-	ck_assert(chunk_equals(expected_server_handshake_key, s_key));
+	ck_assert_chunk_eq(expected_server_handshake_key, s_key);
 
 	ck_assert(hkdf->derive_iv(hkdf, TRUE, 12, &s_iv));
-	ck_assert(chunk_equals(expected_server_handshake_iv, s_iv));
+	ck_assert_chunk_eq(expected_server_handshake_iv, s_iv);
 
 	hkdf->destroy(hkdf);
 
@@ -349,7 +343,6 @@ START_TEST(test_ulfheim_traffic)
 	);
 
 	chunk_t ecdhe = chunk_from_chars(
-		/* df4a291baa1eb7cfa6934b29b474baad2697e29f1f920dcc77c8a0a088447624 */
 		0xdf, 0x4a, 0x29, 0x1b, 0xaa, 0x1e, 0xb7, 0xcf,
 		0xa6, 0x93, 0x4b, 0x29, 0xb4, 0x74, 0xba, 0xad,
 		0x26, 0x97, 0xe2, 0x9f, 0x1f, 0x92, 0x0d, 0xcc,
@@ -357,52 +350,47 @@ START_TEST(test_ulfheim_traffic)
 	);
 
 	chunk_t expected_client_application_key = chunk_from_chars(
-		/* 49134b95328f279f0183860589ac6707 */
 		0x49, 0x13, 0x4b, 0x95, 0x32, 0x8f, 0x27, 0x9f,
 		0x01, 0x83, 0x86, 0x05, 0x89, 0xac, 0x67, 0x07,
 	);
 
 	chunk_t expected_client_application_iv = chunk_from_chars(
-		/* bc4dd5f7b98acff85466261d */
 		0xbc, 0x4d, 0xd5, 0xf7, 0xb9, 0x8a, 0xcf, 0xf8,
 		0x54, 0x66, 0x26, 0x1d,
 	);
 
 	chunk_t expected_server_application_key = chunk_from_chars(
-		/* 0b6d22c8ff68097ea871c672073773bf */
 		0x0b, 0x6d, 0x22, 0xc8, 0xff, 0x68, 0x09, 0x7e,
 		0xa8, 0x71, 0xc6, 0x72, 0x07, 0x37, 0x73, 0xbf,
 	);
 
 	chunk_t expected_server_application_iv = chunk_from_chars(
-		/* 1b13dd9f8d8f17091d34b349 */
 		0x1b, 0x13, 0xdd, 0x9f, 0x8d, 0x8f, 0x17, 0x09,
 		0x1d, 0x34, 0xb3, 0x49,
 	);
 
 	chunk_t c_key, c_iv, s_key, s_iv;
 
-	tls_hkdf_t *hkdf = tls_hkdf_create(HASH_SHA256, NULL);
-
-	ck_assert(hkdf->set_shared_secret(hkdf, &ecdhe));
+	tls_hkdf_t *hkdf = tls_hkdf_create(HASH_SHA256, chunk_empty);
+	hkdf->set_shared_secret(hkdf, ecdhe);
 
 	/* Generate client application traffic secret */
-	ck_assert(hkdf->generate_secret(hkdf, TLS_HKDF_C_AP_TRAFFIC, &handshake, NULL));
+	ck_assert(hkdf->generate_secret(hkdf, TLS_HKDF_C_AP_TRAFFIC, handshake, NULL));
 
 	ck_assert(hkdf->derive_key(hkdf, FALSE, 16, &c_key));
-	ck_assert(chunk_equals(expected_client_application_key, c_key));
+	ck_assert_chunk_eq(expected_client_application_key, c_key);
 
 	ck_assert(hkdf->derive_iv(hkdf, FALSE, 12, &c_iv));
-	ck_assert(chunk_equals(expected_client_application_iv, c_iv));
+	ck_assert_chunk_eq(expected_client_application_iv, c_iv);
 
 	/* Generate server application traffic secret */
-	ck_assert(hkdf->generate_secret(hkdf, TLS_HKDF_S_AP_TRAFFIC, &handshake, NULL));
+	ck_assert(hkdf->generate_secret(hkdf, TLS_HKDF_S_AP_TRAFFIC, handshake, NULL));
 
 	ck_assert(hkdf->derive_key(hkdf, TRUE, 16, &s_key));
-	ck_assert(chunk_equals(expected_server_application_key, s_key));
+	ck_assert_chunk_eq(expected_server_application_key, s_key);
 
 	ck_assert(hkdf->derive_iv(hkdf, TRUE, 12, &s_iv));
-	ck_assert(chunk_equals(expected_server_application_iv, s_iv));
+	ck_assert_chunk_eq(expected_server_application_iv, s_iv);
 
 	hkdf->destroy(hkdf);
 

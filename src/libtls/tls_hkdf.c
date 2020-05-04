@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2020 Pascal Knecht
  * Copyright (C) 2020 Méline Sieber
+ * HSR Hochschule fuer Technik Rapperswil
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -14,8 +15,8 @@
  */
 
 #include "tls_hkdf.h"
-#include <utils/chunk.h>
-#include <library.h>
+
+#include <bio/bio_writer.h>
 #include <crypto/prf_plus.h>
 
 typedef struct private_tls_hkdf_t private_tls_hkdf_t;
@@ -45,29 +46,9 @@ struct private_tls_hkdf_t {
 	hash_algorithm_t hash_algorithm;
 
 	/**
-	 * Length of this hash output in bytes.
-	 */
-	size_t hash_length;
-
-	/**
-	 * Preshared key IKM
-	 */
-	chunk_t *psk;
-
-	/**
-	 * (EC)DHE IKM
-	 */
-	chunk_t *shared_secret;
-
-	/**
 	 * Pseudorandom function used.
 	 */
 	prf_t *prf;
-
-	/**
-	 * Pseudorandom plus function used.
-	 */
-	prf_plus_t *prf_plus;
 
 	/**
 	 * Hasher used.
@@ -75,9 +56,9 @@ struct private_tls_hkdf_t {
 	hasher_t *hasher;
 
 	/**
-	 * Salt used.
+	 * (EC)DHE as IKM to switch from phase 1 to phase 2
 	 */
-	chunk_t salt;
+	chunk_t shared_secret;
 
 	/**
 	 * IKM used.
@@ -90,19 +71,9 @@ struct private_tls_hkdf_t {
 	chunk_t prk;
 
 	/**
-	 * Info used.
-	 */
-	chunk_t info;
-
-	/**
 	 * OKM used.
 	 */
 	chunk_t okm;
-
-	/**
-	 * Length of the desired key output.
-	 */
-	size_t L;
 };
 
 static char *hkdf_labels[] = {
@@ -118,109 +89,122 @@ static char *hkdf_labels[] = {
 	"tls13 res master",
 };
 
-/* HKDF-Extract(this->salt, this->ikm) -> this->prk */
-static bool extract(private_tls_hkdf_t *this, chunk_t *salt, chunk_t *ikm, chunk_t *prk)
+/**
+ * Step 1: Extract, as defined in RFC 5869, section 2.2:
+ * HKDF-Extract(salt, IKM) -> PRK
+ */
+static bool extract(private_tls_hkdf_t *this, chunk_t salt, chunk_t ikm,
+	chunk_t *prk)
 {
-	if (!this->prf->set_key(this->prf, *salt))
+	if (!this->prf->set_key(this->prf, salt))
 	{
 		DBG1(DBG_TLS, "unable to set PRF salt");
 		return FALSE;
 	}
 	chunk_clear(prk);
-	if(!this->prf->allocate_bytes(this->prf, *ikm, prk))
+	if(!this->prf->allocate_bytes(this->prf, ikm, prk))
 	{
 		DBG1(DBG_TLS, "unable to allocate PRF space");
 		return FALSE;
 	}
 
-	DBG3(DBG_TLS, "PRK: %B", prk);
+	DBG4(DBG_TLS, "PRK: %B", prk);
 
 	return TRUE;
 }
 
-/* HKDF-Expand(this->prk, this->info, this->L) -> this->okm */
-static bool expand(private_tls_hkdf_t *this, chunk_t *prk, chunk_t *info, size_t lenght, chunk_t *okm)
+/**
+ * Step 2: Expand as defined in RFC 5869, section 2.3:
+ * HKDF-Expand(PRK, info, L) -> OKM
+ */
+static bool expand(private_tls_hkdf_t *this, chunk_t prk, chunk_t info,
+	size_t length, chunk_t *okm)
 {
-	if (!this->prf->set_key(this->prf, *prk))
+	if (!this->prf->set_key(this->prf, prk))
 	{
 		DBG1(DBG_TLS, "unable to set PRF PRK");
-		chunk_free(&this->info);
 		return FALSE;
 	}
-	DESTROY_IF(this->prf_plus);
-	this->prf_plus = prf_plus_create(this->prf, TRUE, *info);
+	prf_plus_t *prf_plus = prf_plus_create(this->prf, TRUE, info);
 	chunk_clear(&this->okm);
-	if (!this->prf_plus->allocate_bytes(this->prf_plus, lenght, okm))
+	if (!prf_plus || !prf_plus->allocate_bytes(prf_plus, length, okm))
 	{
 		DBG1(DBG_TLS, "unable to allocate PRF plus space");
+		DESTROY_IF(prf_plus);
 		chunk_clear(okm);
-		chunk_free(&this->info);
 		return FALSE;
 	}
-	chunk_free(&this->info);
+	DESTROY_IF(prf_plus);
 
-	DBG3(DBG_TLS, "OKM: %B", okm);
+	DBG4(DBG_TLS, "OKM: %B", okm);
 
 	return TRUE;
 }
 
-static bool expand_label(private_tls_hkdf_t *this, chunk_t *secret, chunk_t *label, chunk_t *context, uint16_t length, chunk_t *key)
+/**
+ * Expand-Label as defined in RFC 8446, section 7.1:
+ * HKDF-Expand-Label(Secret, Label, Context, Length) -> OKM
+ */
+static bool expand_label(private_tls_hkdf_t *this, chunk_t secret,
+						 chunk_t label, chunk_t context, uint16_t length,
+						 chunk_t *key)
 {
-	if (label->len < 7 || label->len > 255 ||
-		context->len < 0 || context->len > 255)
+	bool success;
+
+	if (label.len < 7 || label.len > 255 ||
+		context.len < 0 || context.len > 255)
 	{
-		chunk_free(context);
 		return FALSE;
 	}
 
-	/* HKDFLabel */
-	size_t offset = 0;
-	size_t chunk_len = 2 + 1 + label->len + 1 + context->len;
-	this->info = chunk_alloc(chunk_len);
-	this->info.ptr[1] = length & 0xFF;
-	this->info.ptr[0] = length >> 8;
-	this->info.ptr[2] = label->len;
-	offset += 3;
-	memcpy(&(this->info).ptr[offset], label->ptr, label->len);
-	offset += label->len;
-	this->info.ptr[offset] = context->len;
-	offset += 1;
-	memcpy(&(this->info).ptr[offset], context->ptr, context->len);
-	offset += context->len;
+	/* HKDFLabel as defined in RFC 8446, section 7.1 */
+	bio_writer_t *writer = bio_writer_create(0);
+	writer->write_uint16(writer, length);
+	writer->write_data8(writer, label);
+	writer->write_data8(writer, context);
 
-	expand(this, secret, &this->info, length, key);
-
-	return TRUE;
+	success = expand(this, secret, writer->get_buf(writer), length, key);
+	writer->destroy(writer);
+	return success;
 }
 
-static bool derive_secret(private_tls_hkdf_t *this, chunk_t *label, chunk_t *messages)
+/**
+ * Derive-Secret as defined in RFC 8446, section 7.1:
+ * Derive-Secret(Secret, Label, Message) -> OKM
+ */
+static bool derive_secret(private_tls_hkdf_t *this, chunk_t label,
+	chunk_t messages)
 {
-	size_t chunk_len = this->L;
-	chunk_t context = chunk_alloca(chunk_len);
+	bool success;
+	chunk_t context;
 
-	if (!this->hasher || !this->hasher->allocate_hash(this->hasher, *messages, &context))
+	if (!this->hasher ||
+		!this->hasher->allocate_hash(this->hasher, messages, &context))
 	{
-		DBG1(DBG_TLS, "%N not supported", hash_algorithm_names, this->hash_algorithm);
+		DBG1(DBG_TLS, "%N not supported", hash_algorithm_names,
+			 this->hash_algorithm);
 		return FALSE;
 	}
 
-	DBG3(DBG_TLS, "HASH: %B", &context);
-
-	expand_label(this, &this->prk, label, &context, this->L, &this->okm);
-
+	success = expand_label(this, this->prk, label, context,
+						   this->hasher->get_hash_size(this->hasher),
+						   &this->okm);
 	chunk_free(&context);
-
-	return TRUE;
+	return success;
 }
 
 static bool move_to_phase_1(private_tls_hkdf_t *this)
 {
+	chunk_t salt_zero;
+
 	switch (this->phase)
 	{
 		case HKDF_PHASE_0:
-			if (!extract(this, &this->salt, &this->ikm, &this->prk))
+			salt_zero = chunk_alloca(this->hasher->get_hash_size(this->hasher));
+			chunk_copy_pad(salt_zero, chunk_empty, 0);
+			if (!extract(this, salt_zero, this->ikm, &this->prk))
 			{
-				DBG1(DBG_TLS, "unable extract PRK");
+				DBG1(DBG_TLS, "unable to extract PRK");
 				return FALSE;
 			}
 			this->phase = HKDF_PHASE_1;
@@ -235,35 +219,37 @@ static bool move_to_phase_1(private_tls_hkdf_t *this)
 
 static bool move_to_phase_2(private_tls_hkdf_t *this)
 {
-	chunk_t empty, derived;
+	chunk_t derived;
 
 	switch (this->phase)
 	{
 		case HKDF_PHASE_0:
-			move_to_phase_1(this);
+			if (!move_to_phase_1(this))
+			{
+				DBG1(DBG_TLS, "unable to move to phase 1");
+				return FALSE;
+			}
+			/* fall-through */
 		case HKDF_PHASE_1:
-			empty = chunk_empty;
 			derived = chunk_from_str("tls13 derived");
-			if (!derive_secret(this, &derived, &empty))
+			if (!derive_secret(this, derived, chunk_empty))
 			{
 				DBG1(DBG_TLS, "unable to derive secret");
 				return FALSE;
 			}
 
-			if (!this->shared_secret)
+			if (!this->shared_secret.ptr)
 			{
 				DBG1(DBG_TLS, "no shared secret set");
 				return FALSE;
 			}
 			else
 			{
-				chunk_free(&this->ikm);
-				this->ikm = chunk_alloc(this->shared_secret->len);
-				memcpy(this->ikm.ptr, this->shared_secret->ptr, this->shared_secret->len);
-				this->ikm.len = this->shared_secret->len;
+				chunk_clear(&this->ikm);
+				this->ikm = chunk_clone(this->shared_secret);
 			}
 
-			if (!extract(this, &this->okm, &this->ikm, &this->prk))
+			if (!extract(this, this->okm, this->ikm, &this->prk))
 			{
 				DBG1(DBG_TLS, "unable extract PRK");
 				return FALSE;
@@ -280,31 +266,30 @@ static bool move_to_phase_2(private_tls_hkdf_t *this)
 
 static bool move_to_phase_3(private_tls_hkdf_t *this)
 {
-	chunk_t empty, derived;
+	chunk_t derived, ikm_zero;
 
 	switch (this->phase)
 	{
 		case HKDF_PHASE_0:
 		case HKDF_PHASE_1:
-			move_to_phase_2(this);
+			if (!move_to_phase_2(this))
+			{
+				DBG1(DBG_TLS, "unable to move to phase 2");
+				return FALSE;
+			}
+			/* fall-through */
 		case HKDF_PHASE_2:
 			/* prepare okm for next extract */
-			empty = chunk_empty;
 			derived = chunk_from_str("tls13 derived");
-			if (!derive_secret(this, &derived, &empty))
+			if (!derive_secret(this, derived, chunk_empty))
 			{
 				DBG1(DBG_TLS, "unable to derive secret");
 				return FALSE;
 			}
 
-			chunk_t ikm = chunk_from_chars(
-				0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-				0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-				0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-				0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-			);
-
-			if (!extract(this, &this->okm, &ikm, &this->prk))
+			ikm_zero = chunk_alloca(this->hasher->get_hash_size(this->hasher));
+			chunk_copy_pad(ikm_zero, chunk_empty, 0);
+			if (!extract(this, this->okm, ikm_zero, &this->prk))
 			{
 				DBG1(DBG_TLS, "unable extract PRK");
 				return FALSE;
@@ -319,34 +304,44 @@ static bool move_to_phase_3(private_tls_hkdf_t *this)
 	}
 }
 
-static bool write_key_to_caller_secret(private_tls_hkdf_t *this, chunk_t *key, chunk_t *secret)
+static void return_secret(private_tls_hkdf_t *this, chunk_t key,
+						  chunk_t *secret)
 {
-	*secret = chunk_alloc(this->L);
-	memset(secret->ptr, 0, this->L);
-	memcpy(secret->ptr + secret->len - key->len,
-		   key->ptr, key->len);
-
-	return TRUE;
+	*secret = chunk_alloc(key.len);
+	chunk_copy_pad(*secret, key, 0);
 }
 
-METHOD(tls_hkdf_t, set_shared_secret, bool, private_tls_hkdf_t *this, chunk_t *shared_secret)
+static bool get_shared_label_keys(private_tls_hkdf_t *this, chunk_t label,
+								  bool is_server, size_t length, chunk_t *key)
 {
-	if (!shared_secret)
+	chunk_t result;
+
+	if (!expand_label(this, this->okm, label, chunk_empty, length, &result))
 	{
-		DBG1(DBG_TLS, "no shared secret provided");
+		DBG1(DBG_TLS, "unable to derive secret");
+		chunk_clear(&result);
 		return FALSE;
 	}
 
-	this->shared_secret = shared_secret;
+	if (key)
+	{
+		return_secret(this, result, key);
+	}
+
+	chunk_clear(&result);
 	return TRUE;
 }
 
-METHOD(tls_hkdf_t, generate_secret, bool, private_tls_hkdf_t *this, enum tls_hkdf_labels_t label, chunk_t *messages, chunk_t *secret)
+METHOD(tls_hkdf_t, set_shared_secret, void,
+	private_tls_hkdf_t *this, chunk_t shared_secret)
 {
-	chunk_t label_name;
-	this->L = this->hasher->get_hash_size(this->hasher);
-	label_name = chunk_from_str(hkdf_labels[label]);
+	this->shared_secret = chunk_clone(shared_secret);
+}
 
+METHOD(tls_hkdf_t, generate_secret, bool,
+	private_tls_hkdf_t *this, enum tls_hkdf_labels_t label, chunk_t messages,
+	chunk_t *secret)
+{
 	switch (label)
 	{
 		case TLS_HKDF_EXT_BINDER:
@@ -355,7 +350,7 @@ METHOD(tls_hkdf_t, generate_secret, bool, private_tls_hkdf_t *this, enum tls_hkd
 		case TLS_HKDF_E_EXP_MASTER:
 			if (!move_to_phase_1(this))
 			{
-				DBG1(DBG_TLS, "unable to move to phase 1.");
+				DBG1(DBG_TLS, "unable to move to phase 1");
 				return FALSE;
 			}
 			break;
@@ -363,7 +358,7 @@ METHOD(tls_hkdf_t, generate_secret, bool, private_tls_hkdf_t *this, enum tls_hkd
 		case TLS_HKDF_S_HS_TRAFFIC:
 			if (!move_to_phase_2(this))
 			{
-				DBG1(DBG_TLS, "unable to move to phase 2.");
+				DBG1(DBG_TLS, "unable to move to phase 2");
 				return FALSE;
 			}
 			break;
@@ -373,113 +368,72 @@ METHOD(tls_hkdf_t, generate_secret, bool, private_tls_hkdf_t *this, enum tls_hkd
 		case TLS_HKDF_RES_MASTER:
 			if (!move_to_phase_3(this))
 			{
-				DBG1(DBG_TLS, "unable to move to phase 3.");
+				DBG1(DBG_TLS, "unable to move to phase 3");
 				return FALSE;
 			}
 			break;
 		default:
-			DBG1(DBG_TLS, "invalid HKDF label.");
+			DBG1(DBG_TLS, "invalid HKDF label");
 			return FALSE;
 	}
 
-	if (!derive_secret(this, &label_name, messages))
+	if (!derive_secret(this, chunk_from_str(hkdf_labels[label]), messages))
 	{
 		DBG1(DBG_TLS, "unable to derive secret");
 		return FALSE;
 	}
 
-	if (!secret)
+	if (secret)
 	{
-		return TRUE;
-	}
-
-	if (!write_key_to_caller_secret(this, &this->okm, secret))
-	{
-		DBG1(DBG_TLS, "unable to write secret back to caller");
-		return FALSE;
+		return_secret(this, this->okm, secret);
 	}
 
 	return TRUE;
 }
 
-METHOD(tls_hkdf_t, derive_key, bool, private_tls_hkdf_t *this, bool is_server, size_t length, chunk_t *key)
+METHOD(tls_hkdf_t, derive_key, bool,
+	private_tls_hkdf_t *this, bool is_server, size_t length, chunk_t *key)
 {
-	chunk_t label_name = chunk_from_str("tls13 key");
-	chunk_t messages = chunk_empty;
-	this->L = length;
-	chunk_t result;
-
-	if (!expand_label(this, &this->okm, &label_name, &messages, length, &result))
-	{
-		DBG1(DBG_TLS, "unable to derive secret");
-		chunk_clear(&result);
-		return FALSE;
-	}
-
-	if (!key)
-	{
-		DBG1(DBG_TLS, "no memory for key provided");
-		return FALSE;
-	}
-
-	if (!write_key_to_caller_secret(this, &result, key))
-	{
-		DBG1(DBG_TLS, "unable to write secret back to caller");
-		return FALSE;
-	}
-
-	chunk_clear(&result);
-	return TRUE;
+	return get_shared_label_keys(this, chunk_from_str("tls13 key"), is_server,
+								 length, key);
 }
 
-METHOD(tls_hkdf_t, derive_iv, bool, private_tls_hkdf_t *this, bool is_server, size_t length, chunk_t *iv)
+METHOD(tls_hkdf_t, derive_iv, bool,
+	private_tls_hkdf_t *this, bool is_server, size_t length, chunk_t *iv)
 {
-	chunk_t label_name = chunk_from_str("tls13 iv");
-	chunk_t messages = chunk_empty;
-	this->L = length;
-
-	chunk_t result;
-
-	if (!expand_label(this, &this->okm, &label_name, &messages, length, &result))
-	{
-		DBG1(DBG_TLS, "unable to derive secret");
-		chunk_clear(&result);
-		return FALSE;
-	}
-
-	if (!iv)
-	{
-		DBG1(DBG_TLS, "no memory for iv provided");
-		return FALSE;
-	}
-
-	if (!write_key_to_caller_secret(this, &result, iv))
-	{
-		DBG1(DBG_TLS, "unable to write secret back to caller");
-		return FALSE;
-	}
-
-	chunk_clear(&result);
-	return TRUE;
+	return get_shared_label_keys(this, chunk_from_str("tls13 iv"),
+								 is_server, length, iv);
 }
 
 METHOD(tls_hkdf_t, destroy, void,
-	   private_tls_hkdf_t *this)
+	private_tls_hkdf_t *this)
 {
-	chunk_free(&this->salt);
 	chunk_free(&this->ikm);
-	chunk_free(&this->info);
 	chunk_clear(&this->prk);
+	chunk_clear(&this->shared_secret);
 	chunk_clear(&this->okm);
-	DESTROY_IF(this->prf_plus);
-	this->prf->destroy(this->prf);
-	this->hasher->destroy(this->hasher);
+	DESTROY_IF(this->prf);
+	DESTROY_IF(this->hasher);
 	free(this);
 }
 
-tls_hkdf_t *tls_hkdf_create(hash_algorithm_t hash_algorithm, chunk_t *psk)
+tls_hkdf_t *tls_hkdf_create(hash_algorithm_t hash_algorithm, chunk_t psk)
 {
 	private_tls_hkdf_t *this;
+	pseudo_random_function_t prf_algorithm;
+
+	switch (hash_algorithm)
+	{
+		case HASH_SHA256:
+			prf_algorithm = PRF_HMAC_SHA2_256;
+			break;
+		case HASH_SHA384:
+			prf_algorithm = PRF_HMAC_SHA2_384;
+			break;
+		default:
+			DBG1(DBG_TLS, "not supported hash algorithm");
+			return NULL;
+	}
 
 	INIT(this,
 		.public = {
@@ -491,27 +445,23 @@ tls_hkdf_t *tls_hkdf_create(hash_algorithm_t hash_algorithm, chunk_t *psk)
 		},
 		.phase = HKDF_PHASE_0,
 		.hash_algorithm = hash_algorithm,
-		.L = 32,
-		.prf = lib->crypto->create_prf(lib->crypto, PRF_HMAC_SHA2_256),
+		.prf = lib->crypto->create_prf(lib->crypto, prf_algorithm),
 		.hasher = lib->crypto->create_hasher(lib->crypto, hash_algorithm),
 	);
 
-	this->salt = chunk_alloc(this->L);
-	memset(this->salt.ptr, 0, this->salt.len);
-
-	if (!psk)
+	if (!psk.ptr)
 	{
-		this->ikm = chunk_alloc(this->L);
-		memset(this->ikm.ptr, 0, this->ikm.len);
+		this->ikm = chunk_alloc(this->hasher->get_hash_size(this->hasher));
+		chunk_copy_pad(this->ikm, chunk_empty, 0);
 	}
 	else
 	{
-		chunk_create_clone(psk->ptr, this->ikm);
+		this->ikm = chunk_clone(psk);
 	}
 
-	if (!this->hasher)
+	if (!this->prf || !this->hasher)
 	{
-		DBG1(DBG_TLS, "unable to set hash");
+		DBG1(DBG_TLS, "unable to initialise HKDF");
 		destroy(this);
 		return NULL;
 	}

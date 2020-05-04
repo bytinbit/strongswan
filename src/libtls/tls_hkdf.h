@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2020 Pascal Knecht
  * Copyright (C) 2020 Méline Sieber
+ * HSR Hochschule fuer Technik Rapperswil
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -22,7 +23,7 @@
 #define TLS_HKDF_H_
 
 #include <crypto/hashers/hasher.h>
-#include <utils/chunk.h>
+#include <library.h>
 
 typedef struct tls_hkdf_t tls_hkdf_t;
 
@@ -51,12 +52,11 @@ struct tls_hkdf_t {
 	 * Set the (EC)DHE shared secret of this connection.
 	 *
 	 * @param shared_secret		input key material to use
-	 * @return 					TRUE if the ikm set successfully
 	 */
-	bool (*set_shared_secret)(tls_hkdf_t *this, chunk_t *shared_secret);
+	void (*set_shared_secret)(tls_hkdf_t *this, chunk_t shared_secret);
 
 	/**
-	 * Returns the secret of the requested label.
+	 * Allocate secret of the requested label.
 	 *
 	 * Space for returned secret is allocated and must be freed by the caller.
 	 *
@@ -65,27 +65,34 @@ struct tls_hkdf_t {
 	 * @param secret			secret will be written into this chunk, if used
 	 * @return					TRUE if secrets derived successfully
 	 */
-	bool (*generate_secret)(tls_hkdf_t *this, enum tls_hkdf_labels_t label, chunk_t *messages, chunk_t *secret);
+	bool (*generate_secret)(tls_hkdf_t *this, enum tls_hkdf_labels_t label,
+							chunk_t messages, chunk_t *secret);
 
 	/**
-	 * Returns the traffic encryption key.
+	 * Allocate traffic encryption key bytes.
+	 *
+	 * Space for returned secret is allocated and must be freed by the caller.
 	 *
 	 * @param is_server			TRUE if server, FALSE if client derives key
 	 * @param length			key length, in bytes
 	 * @param key				secret will be written into this chunk
 	 * @return					TRUE if secrets derived successfully
 	 */
-	bool (*derive_key)(tls_hkdf_t *this, bool is_server, size_t length, chunk_t *key);
+	bool (*derive_key)(tls_hkdf_t *this, bool is_server, size_t length,
+					   chunk_t *key);
 
 	/**
-	 * Returns the traffic IV.
+	 * Allocate traffic IV bytes.
+	 *
+	 * Space for returned secret is allocated and must be freed by the caller.
 	 *
 	 * @param is_server			TRUE if server, FALSE if client derives IV
 	 * @param length			key length, in bytes
 	 * @param iv				IV will be written into this chunk
 	 * @return					TRUE if secrets derived successfully
 	 */
-	bool (*derive_iv)(tls_hkdf_t *this, bool is_server, size_t length, chunk_t *iv);
+	bool (*derive_iv)(tls_hkdf_t *this, bool is_server, size_t length,
+					  chunk_t *iv);
 
 	/**
 	 * Destroy a tls_hkdf_t
@@ -100,6 +107,6 @@ struct tls_hkdf_t {
  * @param psk				Pre shared key if available otherwise NULL
  * @return					TLS HKDF helper
  */
-tls_hkdf_t *tls_hkdf_create(hash_algorithm_t hash_algorithm, chunk_t *psk);
+tls_hkdf_t *tls_hkdf_create(hash_algorithm_t hash_algorithm, chunk_t psk);
 
 #endif /** TLS_HKDF_H_ @}*/
