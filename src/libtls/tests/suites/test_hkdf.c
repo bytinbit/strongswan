@@ -110,13 +110,29 @@ START_TEST(test_ulfheim_handshake)
 		0x41, 0x7f, 0xc8, 0x15,
 	);
 
-	chunk_t c_secret, c_key, c_iv, s_secret, s_key, s_iv;
+	chunk_t expected_client_finished_key = chunk_from_chars(
+		0x7c, 0x60, 0xf8, 0xd6, 0x34, 0x6f, 0x4a, 0x96,
+		0x91, 0xd2, 0xae, 0x64, 0x5a, 0x78, 0x85, 0xe0,
+		0x10, 0x4a, 0xdf, 0xf9, 0x8e, 0xba, 0x98, 0x1c,
+		0xa2, 0xf9, 0x9e, 0xf6, 0x2b, 0xdd, 0x8f, 0xaa,
+	);
+
+	chunk_t expected_server_finished_key = chunk_from_chars(
+		0xea, 0x84, 0xab, 0xd2, 0xad, 0xa0, 0xb5, 0xc6,
+		0x4c, 0x08, 0x07, 0xa3, 0x26, 0xb6, 0xfd, 0x94,
+		0xa9, 0x59, 0x7e, 0x39, 0xca, 0x62, 0x10, 0x60,
+		0x7c, 0x0d, 0x3c, 0x8c, 0x76, 0x68, 0x65, 0x71,
+	);
+
+	chunk_t c_secret, c_key, c_iv, s_secret, s_key, s_iv, c_finished,
+			s_finished;
 
 	tls_hkdf_t *hkdf = tls_hkdf_create(HASH_SHA256, chunk_empty);
 	hkdf->set_shared_secret(hkdf, ecdhe);
 
 	/* Generate client handshake traffic secret */
-	ck_assert(hkdf->generate_secret(hkdf, TLS_HKDF_C_HS_TRAFFIC, handshake, &c_secret));
+	ck_assert(hkdf->generate_secret(hkdf, TLS_HKDF_C_HS_TRAFFIC, handshake,
+			  &c_secret));
 	ck_assert_chunk_eq(expected_client_handshake_traffic_secret, c_secret);
 
 	ck_assert(hkdf->derive_key(hkdf, FALSE, 16, &c_key));
@@ -125,9 +141,12 @@ START_TEST(test_ulfheim_handshake)
 	ck_assert(hkdf->derive_iv(hkdf, FALSE, 12, &c_iv));
 	ck_assert_chunk_eq(expected_client_handshake_iv, c_iv);
 
+	ck_assert(hkdf->derive_finished(hkdf, TRUE, 32, &c_finished));
+	ck_assert_chunk_eq(expected_client_finished_key, c_finished);
 
 	/* Generate server handshake traffic secret */
-	ck_assert(hkdf->generate_secret(hkdf, TLS_HKDF_S_HS_TRAFFIC, handshake, &s_secret));
+	ck_assert(hkdf->generate_secret(hkdf, TLS_HKDF_S_HS_TRAFFIC, handshake,
+			  &s_secret));
 	ck_assert_chunk_eq(expected_server_handshake_traffic_secret, s_secret);
 
 	ck_assert(hkdf->derive_key(hkdf, TRUE, 16, &s_key));
@@ -135,6 +154,9 @@ START_TEST(test_ulfheim_handshake)
 
 	ck_assert(hkdf->derive_iv(hkdf, TRUE, 12, &s_iv));
 	ck_assert_chunk_eq(expected_server_handshake_iv, s_iv);
+
+	ck_assert(hkdf->derive_finished(hkdf, TRUE, 32, &s_finished));
+	ck_assert_chunk_eq(expected_server_finished_key, s_finished);
 
 	hkdf->destroy(hkdf);
 
@@ -144,6 +166,8 @@ START_TEST(test_ulfheim_handshake)
 	chunk_free(&s_secret);
 	chunk_free(&s_key);
 	chunk_free(&s_iv);
+	chunk_free(&c_finished);
+	chunk_free(&s_finished);
 }
 END_TEST
 
@@ -375,7 +399,8 @@ START_TEST(test_ulfheim_traffic)
 	hkdf->set_shared_secret(hkdf, ecdhe);
 
 	/* Generate client application traffic secret */
-	ck_assert(hkdf->generate_secret(hkdf, TLS_HKDF_C_AP_TRAFFIC, handshake, NULL));
+	ck_assert(hkdf->generate_secret(hkdf, TLS_HKDF_C_AP_TRAFFIC, handshake,
+			  NULL));
 
 	ck_assert(hkdf->derive_key(hkdf, FALSE, 16, &c_key));
 	ck_assert_chunk_eq(expected_client_application_key, c_key);
@@ -384,7 +409,8 @@ START_TEST(test_ulfheim_traffic)
 	ck_assert_chunk_eq(expected_client_application_iv, c_iv);
 
 	/* Generate server application traffic secret */
-	ck_assert(hkdf->generate_secret(hkdf, TLS_HKDF_S_AP_TRAFFIC, handshake, NULL));
+	ck_assert(hkdf->generate_secret(hkdf, TLS_HKDF_S_AP_TRAFFIC, handshake,
+			  NULL));
 
 	ck_assert(hkdf->derive_key(hkdf, TRUE, 16, &s_key));
 	ck_assert_chunk_eq(expected_server_application_key, s_key);

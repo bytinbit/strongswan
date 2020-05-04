@@ -448,6 +448,16 @@ METHOD(tls_hkdf_t, derive_iv, bool,
 								 is_server, length, iv);
 }
 
+/**
+ * :
+ */
+METHOD(tls_hkdf_t, derive_finished, bool, private_tls_hkdf_t *this,
+	bool is_server, size_t length, chunk_t *finished)
+{
+	return get_shared_label_keys(this, chunk_from_str("tls13 finished"),
+								 is_server, length, finished);
+}
+
 METHOD(tls_hkdf_t, destroy, void,
 	private_tls_hkdf_t *this)
 {
@@ -484,6 +494,7 @@ tls_hkdf_t *tls_hkdf_create(hash_algorithm_t hash_algorithm, chunk_t psk)
 			.generate_secret = _generate_secret,
 			.derive_key = _derive_key,
 			.derive_iv = _derive_iv,
+			.derive_finished = _derive_finished,
 			.destroy = _destroy,
 		},
 		.phase = HKDF_PHASE_0,

@@ -71,9 +71,10 @@ struct tls_hkdf_t {
 	/**
 	 * Allocate traffic encryption key bytes.
 	 *
+	 * Key used to encrypt traffic data as defined in RFC 8446, section 7.3.
 	 * Space for returned secret is allocated and must be freed by the caller.
 	 *
-	 * @param is_server			TRUE if server, FALSE if client derives key
+	 * @param is_server			TRUE if server, FALSE if client derives secret
 	 * @param length			key length, in bytes
 	 * @param key				secret will be written into this chunk
 	 * @return					TRUE if secrets derived successfully
@@ -84,15 +85,31 @@ struct tls_hkdf_t {
 	/**
 	 * Allocate traffic IV bytes.
 	 *
+	 * IV used to encrypt traffic data as defined in RFC 8446, section 7.3.
 	 * Space for returned secret is allocated and must be freed by the caller.
 	 *
-	 * @param is_server			TRUE if server, FALSE if client derives IV
+	 * @param is_server			TRUE if server, FALSE if client derives secret
 	 * @param length			key length, in bytes
 	 * @param iv				IV will be written into this chunk
 	 * @return					TRUE if secrets derived successfully
 	 */
 	bool (*derive_iv)(tls_hkdf_t *this, bool is_server, size_t length,
 					  chunk_t *iv);
+
+	/**
+	 * Allocate finished key bytes.
+	 *
+	 * Key used to compute Finished messages as defined in RFC 8446,
+	 * section 4.4.4. Space for returned secret is allocated and must be freed
+	 * by the caller.
+	 *
+	 * @param is_server			TRUE if server, FALSE if client derives secret
+	 * @param length			key length, in bytes
+	 * @param finished			key will be written into this chunk
+	 * @return					TRUE if secrets derived successfully
+	 */
+	bool (*derive_finished)(tls_hkdf_t *this, bool is_server, size_t length,
+							chunk_t *finished);
 
 	/**
 	 * Destroy a tls_hkdf_t
