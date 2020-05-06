@@ -99,6 +99,8 @@ METHOD(tls_protection_t, process, status_t,
 			return NEED_MORE;
 		}
 
+		/* TODO: aead_in gesetzt, wenn change cipher spec verarbeitet
+		 * => check original code */
 		if (type == TLS_CHANGE_CIPHER_SPEC)
 		{
 			this->seq_in = 0;
@@ -138,22 +140,48 @@ METHOD(tls_protection_t, build, status_t,
 	status = this->compression->build(this->compression, type, data);
 	if (status == NEED_MORE)
 	{
-		if (*type == TLS_CHANGE_CIPHER_SPEC)
+		if (this-> version < TLS_1_3)
 		{
-			this->seq_out = 0;
-			return status;
-		}
-		if (this->aead_out)
-		{
-			if (!this->aead_out->encrypt(this->aead_out, this->version,
-										 type, this->seq_out, data))
+			if (*type == TLS_CHANGE_CIPHER_SPEC)
 			{
-				DBG1(DBG_TLS, "TLS record encryption failed");
-				chunk_free(data);
-				return FAILED;
+				this->seq_out = 0;
+				return status;
+			}
+			if (this->aead_out)
+			{
+				if (!this->aead_out->encrypt(this->aead_out, this->version,
+				                             type, this->seq_out, data))
+				{
+					DBG1(DBG_TLS, "TLS record encryption failed");
+					chunk_free(data);
+					return FAILED;
+				}
+			}
+			this->seq_out++;
+		}
+		else
+		{
+			if (*type == TLS_HANDSHAKE)
+			{
+				this->seq_out = 0;
+			}
+			if (this->aead_out)
+			{
+				if (!this->aead_out->encrypt(this->aead_out, this->version,
+				                             type, this->seq_out, data))
+				{
+					DBG1(DBG_TLS, "TLS record encryption failed");
+					chunk_free(data);
+					return FAILED;
+				}
+			}
+			if (*type == TLS_APPLICATION_DATA)
+			{
+
+				this->seq_out++;
 			}
 		}
-		this->seq_out++;
+
 	}
 	return status;
 }
@@ -161,6 +189,7 @@ METHOD(tls_protection_t, build, status_t,
 METHOD(tls_protection_t, set_cipher, void,
 	private_tls_protection_t *this, bool inbound, tls_aead_t *aead)
 {
+	/* TODO set sequence number here, to do more generically? */
 	if (inbound)
 	{
 		this->aead_in = aead;

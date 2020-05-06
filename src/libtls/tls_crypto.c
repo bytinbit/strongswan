@@ -1851,6 +1851,8 @@ METHOD(tls_crypto_t, calculate_finished_tls13, bool,
        private_tls_crypto_t *this, chunk_t *out)
 {
 	chunk_t finished_key, finished_hash;
+	/* TODO: we allocate here size for sha256 (32 bytes) only,
+    * but should also think of sha384 that has a different output size */
 
 	this->hkdf->derive_finished(this->hkdf, FALSE, 32, &finished_key);
 	if (!hash_data(this, this->handshake, &finished_hash))

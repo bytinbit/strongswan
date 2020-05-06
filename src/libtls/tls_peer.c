@@ -44,6 +44,7 @@ typedef enum {
 	STATE_CIPHERSPEC13_RECEIVED,
 	STATE_HELLO13_RECEIVED,
 	STATE_CERT_VERIFY_RECEIVED,
+	STATE_FINISHED13_RECEIVED,
 
 } peer_state_t;
 
@@ -334,6 +335,7 @@ static status_t process_encrypted_extensions(private_tls_peer_t *this,
 			}
 			switch (extension_type)
 			{
+				/* fall through because not supported so far */
 				case TLS_EXT_SERVER_NAME:
 				case TLS_EXT_MAX_FRAGMENT_LENGTH:
 				case TLS_EXT_SUPPORTED_GROUPS:
@@ -881,6 +883,8 @@ static status_t process_finished(private_tls_peer_t *this, bio_reader_t *reader)
 			this->alert->add(this->alert, TLS_FATAL, TLS_DECRYPT_ERROR);
 			return NEED_MORE;
 		}
+
+		this->state = STATE_FINISHED_RECEIVED;
 	}
 	else
 	{
@@ -904,9 +908,11 @@ static status_t process_finished(private_tls_peer_t *this, bio_reader_t *reader)
 			this->alert->add(this->alert, TLS_FATAL, TLS_DECRYPT_ERROR);
 			return NEED_MORE;
 		}
+		/* TODO calculate Application Data keys */
+
+		this->state = STATE_FINISHED13_RECEIVED;
 	}
 
-	this->state = STATE_FINISHED_RECEIVED;
 	this->crypto->append_handshake(this->crypto, TLS_FINISHED, received);
 
 	return NEED_MORE;
@@ -935,6 +941,8 @@ METHOD(tls_handshake_t, process, status_t,
 			expected = TLS_ENCRYPTED_EXTENSIONS;
 			break;
 		case STATE_HELLO_RECEIVED:
+			/* fall through since legacy TLS and TLS 1.3
+			 * expect the same message */
 		case STATE_ENCRYPTED_EXTENSIONS_RECEIVED:
 			if (type == TLS_CERTIFICATE)
 			{
@@ -1441,6 +1449,7 @@ static status_t send_finished(private_tls_peer_t *this,
 	*type = TLS_FINISHED;
 	this->state = STATE_FINISHED_SENT;
 	this->crypto->append_handshake(this->crypto, *type, writer->get_buf(writer));
+	/* TODO: Client Application keys calc */
 	return NEED_MORE;
 }
 
@@ -1469,7 +1478,10 @@ METHOD(tls_handshake_t, build, status_t,
 			{
 				return INVALID_STATE;
 			}
-		case STATE_FINISHED_RECEIVED: /* TLS 1.3 */
+		case STATE_FINISHED13_RECEIVED:
+		case STATE_FINISHED_RECEIVED:
+			/* fall through since legacy TLS and TLS 1.3
+	        * expect the same message */
 		case STATE_CIPHERSPEC_CHANGED_OUT:
 			return send_finished(this, type, writer);
 		default:
