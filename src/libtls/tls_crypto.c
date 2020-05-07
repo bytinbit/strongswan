@@ -1292,7 +1292,6 @@ static bool create_ciphers(private_tls_crypto_t *this, suite_algs_t *algs)
     }
 	else
     {
-	    /* TODO handle HKDF in TLS 1.3 */
 	    this->hkdf = tls_hkdf_create(algs->hash, NULL);
 	    if (!this->hkdf)
 	    {
@@ -1309,7 +1308,7 @@ static bool create_ciphers(private_tls_crypto_t *this, suite_algs_t *algs)
 	}
 	else if (encryption_algorithm_is_aead(algs->encr))
 	{
-		if (create_aead(this, algs)) // TODO
+		if (create_aead(this, algs))
 		{
 			return TRUE;
 		}

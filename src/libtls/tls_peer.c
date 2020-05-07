@@ -908,7 +908,7 @@ static status_t process_finished(private_tls_peer_t *this, bio_reader_t *reader)
 			this->alert->add(this->alert, TLS_FATAL, TLS_DECRYPT_ERROR);
 			return NEED_MORE;
 		}
-		/* TODO calculate Application Data keys */
+
 
 		this->state = STATE_FINISHED13_RECEIVED;
 	}
@@ -1541,7 +1541,10 @@ METHOD(tls_handshake_t, change_cipherspec, void,
 	}
 	else
 	{
-		this->state = STATE_CIPHERSPEC13_RECEIVED;
+		if (inbound)
+		{
+			this->state = STATE_CIPHERSPEC13_RECEIVED;
+		}
 	}
 }
 
