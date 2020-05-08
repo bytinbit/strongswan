@@ -528,7 +528,8 @@ struct tls_crypto_t {
 	 * @param out			buffer to write finished data to
 	 * @return				TRUE if calculation successful
 	 */
-	bool (*calculate_finished_tls13)(tls_crypto_t *this, chunk_t *out);
+	bool (*calculate_finished_tls13)(tls_crypto_t *this, bool is_server,
+		  chunk_t *out);
 
 	/**
 	 * Derive the master secret, MAC and encryption keys.
@@ -550,7 +551,7 @@ struct tls_crypto_t {
 	 * @param shared_secret 	input key material
 	 * @return 					TRUE if	secret derived successfully
 	 */
-	bool (*derive_handshake_secret)(tls_crypto_t *this, chunk_t *shared_secret);
+	bool (*derive_handshake_secret)(tls_crypto_t *this, chunk_t shared_secret);
 
 	/**
 	 * Try to resume a TLS session, derive key material.

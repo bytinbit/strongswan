@@ -1828,72 +1828,49 @@ METHOD(tls_crypto_t, verify_handshake, bool,
 METHOD(tls_crypto_t, calculate_finished, bool,
 	private_tls_crypto_t *this, char *label, char out[12])
 {
-	if (this->tls->get_version_max(this->tls) < TLS_1_3)
-	{
-		chunk_t seed;
+	chunk_t seed;
 
-		if (!this->prf)
-		{
-			return FALSE;
-		}
-		if (!hash_data(this, this->handshake, &seed))
-		{
-			return FALSE;
-		}
-		if (!this->prf->get_bytes(this->prf, label, seed, 12, out))
-		{
-			free(seed.ptr);
-			return FALSE;
-		}
-		free(seed.ptr);
-		return TRUE;
-	}
-	else
+	if (!this->prf)
 	{
-		// SERVER FINISHED
-		/*
-	1. erweiterung für HKDF: label finished, neue method
-	2. make finished_hash
-	3. verify data
-		 finished_key = HKDF-Expand-Label(
-			    key = server_handshake_traffic_secret, <= wie komme ich da dran?
-			    label = "finished", <= existiert noch nicht
-			    context = "",
-			    len = 32)
-			finished_hash = SHA256(Client Hello ... Server Cert Verify)
-			verify_data = HMAC-SHA256(
-				key = finished_key,
-				msg = finished_hash)
-		 *
-		 */
 		return FALSE;
 	}
+	if (!hash_data(this, this->handshake, &seed))
+	{
+		return FALSE;
+	}
+	if (!this->prf->get_bytes(this->prf, label, seed, 12, out))
+	{
+		free(seed.ptr);
+		return FALSE;
+	}
+	free(seed.ptr);
+	return TRUE;
 }
 
 METHOD(tls_crypto_t, calculate_finished_tls13, bool,
-       private_tls_crypto_t *this, chunk_t *out)
+       private_tls_crypto_t *this, bool is_server, chunk_t *out)
 {
 	chunk_t finished_key, finished_hash;
-	/* TODO: we allocate here size for sha256 (32 bytes) only,
-    * but should also think of sha384 that has a different output size */
 
-	this->hkdf->derive_finished(this->hkdf, FALSE, 32, &finished_key);
+	this->hkdf->derive_finished(this->hkdf, is_server, &finished_key);
 	if (!hash_data(this, this->handshake, &finished_hash))
 	{
 		DBG1(DBG_TLS, "creating hash of handshake failed");
 	}
 
 	prf_t *prf = lib->crypto->create_prf(lib->crypto, PRF_HMAC_SHA2_256);
-	if(!prf->set_key(prf, finished_key))
+	if(!prf->set_key(prf, finished_key) ||
+	   !prf->allocate_bytes(prf, finished_hash, out))
 	{
-		DBG1(DBG_TLS, "setting key for HMAC failed");
+		DBG1(DBG_TLS, "setting key or generating hash for HMAC failed");
+		chunk_clear(&finished_key);
+		chunk_clear(&finished_hash);
+		prf->destroy(prf);
+		return FALSE;
 	}
 
-	if (!prf->allocate_bytes(prf, finished_hash, out))
-	{
-		DBG1(DBG_TLS, "generating hash for HMAC failed");
-	}
-
+	chunk_clear(&finished_key);
+	chunk_clear(&finished_hash);
 	prf->destroy(prf);
 	return TRUE;
 }
@@ -2015,55 +1992,75 @@ METHOD(tls_crypto_t, derive_secrets, bool,
 }
 
 METHOD(tls_crypto_t, derive_handshake_secret, bool, private_tls_crypto_t *this,
-	chunk_t *shared_secret)
+	chunk_t shared_secret)
 {
-	chunk_t client_handshake_traffic_secret, server_handshake_traffic_secret;
 	chunk_t c_key, c_iv, s_key, s_iv;
-	this->hkdf->set_shared_secret(this->hkdf, *shared_secret);
+
+	this->hkdf->set_shared_secret(this->hkdf, shared_secret);
 
 	/* Client key material */
-	this->hkdf->generate_secret(this->hkdf, TLS_HKDF_C_HS_TRAFFIC, this->handshake, &client_handshake_traffic_secret);
-	if(!this->hkdf->derive_key(this->hkdf, FALSE, this->aead_out->get_encr_key_size(this->aead_out), &c_key))
+	if (!this->hkdf->generate_secret(this->hkdf, TLS_HKDF_C_HS_TRAFFIC,
+									 this->handshake, NULL) ||
+		!this->hkdf->derive_key(this->hkdf, FALSE,
+								this->aead_out->
+								get_encr_key_size(this->aead_out), &c_key) ||
+		!this->hkdf->derive_iv(this->hkdf, FALSE,
+							   this->aead_out->
+							   get_iv_size(this->aead_out), &c_iv))
 	{
-		DBG1(DBG_TLS, "deriving client key failed");
-		return FALSE;
-	}
-	if(!this->hkdf->derive_iv(this->hkdf, FALSE, this->aead_out->get_iv_size(this->aead_out), &c_iv))
-	{
-		DBG1(DBG_TLS, "deriving client iv failed");
+		DBG1(DBG_TLS, "deriving client key material failed");
+		chunk_clear(&c_key);
+		chunk_clear(&c_iv);
 		return FALSE;
 	}
 
 	/* Server key material */
-	this->hkdf->generate_secret(this->hkdf, TLS_HKDF_S_HS_TRAFFIC, this->handshake, &server_handshake_traffic_secret);
-	if(!this->hkdf->derive_key(this->hkdf, TRUE, this->aead_in->get_encr_key_size(this->aead_in), &s_key))
+	if(!this->hkdf->generate_secret(this->hkdf, TLS_HKDF_S_HS_TRAFFIC,
+	   this->handshake, NULL) ||
+	   !this->hkdf->derive_key(this->hkdf, TRUE, this->aead_in->
+	   get_encr_key_size(this->aead_in), &s_key) ||
+	   !this->hkdf->derive_iv(this->hkdf, TRUE, this->aead_in->
+	   get_iv_size(this->aead_in), &s_iv))
 	{
-		DBG1(DBG_TLS, "deriving server key failed");
+		DBG1(DBG_TLS, "deriving server key material failed");
+		chunk_clear(&c_key);
+		chunk_clear(&c_iv);
+		chunk_clear(&s_key);
+		chunk_clear(&s_iv);
 		return FALSE;
 	}
-	if(!this->hkdf->derive_iv(this->hkdf, TRUE, this->aead_in->get_iv_size(this->aead_in), &s_iv))
-	{
-		DBG1(DBG_TLS, "deriving server iv failed");
-		return FALSE;
-	}
+
 	if (this->tls->is_server(this->tls))
 	{
 		if (!this->aead_in->set_keys(this->aead_in, chunk_empty, s_key, s_iv) ||
 			!this->aead_out->set_keys(this->aead_out, chunk_empty, c_key, c_iv))
 		{
 			DBG1(DBG_TLS, "setting aead server key material failed");
+			chunk_clear(&c_key);
+			chunk_clear(&c_iv);
+			chunk_clear(&s_key);
+			chunk_clear(&s_iv);
 			return FALSE;
 		}
 	}
 	else
 	{
-		if (!this->aead_out->set_keys(this->aead_out, chunk_empty, c_key, c_iv) ||
-			!this->aead_in->set_keys(this->aead_in, chunk_empty, s_key, s_iv))
+		if (!this->aead_in->set_keys(this->aead_in, chunk_empty, s_key, s_iv) ||
+			!this->aead_out->set_keys(this->aead_out, chunk_empty, c_key, c_iv))
 		{
 			DBG1(DBG_TLS, "setting aead client key material failed");
+			chunk_clear(&c_key);
+			chunk_clear(&c_iv);
+			chunk_clear(&s_key);
+			chunk_clear(&s_iv);
 			return FALSE;
 		}
 	}
+
+	chunk_clear(&c_key);
+	chunk_clear(&c_iv);
+	chunk_clear(&s_key);
+	chunk_clear(&s_iv);
 	return TRUE;
 }
 

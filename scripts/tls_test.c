@@ -115,8 +115,7 @@ static int run_client(host_t *host, identification_t *server,
 			}
 
 		}
-		tls = tls_socket_create(FALSE, server, client, fd, cache,
-			TLS_1_2, TRUE);
+		tls = tls_socket_create(FALSE, server, client, fd, cache, TLS_1_3, TRUE);
 		if (!tls)
 		{
 			close(fd);

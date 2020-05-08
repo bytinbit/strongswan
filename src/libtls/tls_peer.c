@@ -276,7 +276,7 @@ static status_t process_server_hello(private_tls_peer_t *this,
 		else
 		{
 			if(!this->crypto->derive_handshake_secret(this->crypto,
-				&shared_secret))
+				shared_secret))
 			{
 				DBG2(DBG_TLS, "Derive handshake secret failed");
 			}
@@ -896,7 +896,8 @@ static status_t process_finished(private_tls_peer_t *this, bio_reader_t *reader)
 			this->alert->add(this->alert, TLS_FATAL, TLS_DECODE_ERROR);
 			return NEED_MORE;
 		}
-		if (!this->crypto->calculate_finished_tls13(this->crypto, &verify_data))
+		if (!this->crypto->calculate_finished_tls13(this->crypto, true,
+			&verify_data))
 		{
 			DBG1(DBG_TLS, "calculating server finished failed");
 			this->alert->add(this->alert, TLS_FATAL, TLS_INTERNAL_ERROR);
@@ -1436,7 +1437,8 @@ static status_t send_finished(private_tls_peer_t *this,
 	}
 	else
 	{
-		if(!this->crypto->calculate_finished_tls13(this->crypto, &verify_data))
+		if(!this->crypto->calculate_finished_tls13(this->crypto, false,
+		   &verify_data))
 		{
 			DBG1(DBG_TLS, "calculating client finished data failed");
 			this->alert->add(this->alert, TLS_FATAL, TLS_INTERNAL_ERROR);
