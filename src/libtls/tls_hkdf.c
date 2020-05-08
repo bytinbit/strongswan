@@ -41,11 +41,6 @@ struct private_tls_hkdf_t {
 	hkdf_phase phase;
 
 	/**
-	 * Last HKDF label that was used to generate secret.
-	 */
-	enum tls_hkdf_labels_t last_label_used;
-
-	/**
 	 * Hash algorithm used.
 	 */
 	hash_algorithm_t hash_algorithm;
@@ -79,6 +74,13 @@ struct private_tls_hkdf_t {
 	 * OKM used.
 	 */
 	chunk_t okm;
+
+	/**
+	 * Current implementation needs a copy of derived secrets to calculate the
+	 * proper finished key.
+	 */
+	chunk_t client_traffic_secret;
+	chunk_t server_traffic_secret;
 };
 
 static char *hkdf_labels[] = {
@@ -99,7 +101,7 @@ static char *hkdf_labels[] = {
  * HKDF-Extract(salt, IKM) -> PRK
  */
 static bool extract(private_tls_hkdf_t *this, chunk_t salt, chunk_t ikm,
-	chunk_t *prk)
+					chunk_t *prk)
 {
 	if (!this->prf->set_key(this->prf, salt))
 	{
@@ -123,7 +125,7 @@ static bool extract(private_tls_hkdf_t *this, chunk_t salt, chunk_t ikm,
  * HKDF-Expand(PRK, info, L) -> OKM
  */
 static bool expand(private_tls_hkdf_t *this, chunk_t prk, chunk_t info,
-	size_t length, chunk_t *okm)
+				   size_t length, chunk_t *okm)
 {
 	if (!this->prf->set_key(this->prf, prk))
 	{
@@ -178,7 +180,7 @@ static bool expand_label(private_tls_hkdf_t *this, chunk_t secret,
  * Derive-Secret(Secret, Label, Message) -> OKM
  */
 static bool derive_secret(private_tls_hkdf_t *this, chunk_t label,
-	chunk_t messages)
+						  chunk_t messages)
 {
 	bool success;
 	chunk_t context;
@@ -319,48 +321,21 @@ static void return_secret(private_tls_hkdf_t *this, chunk_t key,
 static bool get_shared_label_keys(private_tls_hkdf_t *this, chunk_t label,
 								  bool is_server, size_t length, chunk_t *key)
 {
-	chunk_t result;
+	chunk_t result, secret;
 
-	switch (this->phase)
+	if (is_server)
 	{
-		case HKDF_PHASE_2:
-			if (is_server && this->last_label_used == TLS_HKDF_S_HS_TRAFFIC)
-			{
-				break;
-			}
-			else if (this->last_label_used == TLS_HKDF_C_HS_TRAFFIC)
-			{
-				break;
-			}
-			else
-			{
-				DBG1(DBG_TLS, "in phase 2, last generated secret must either be"
-				  	 " TLS_HKDF_S_HS_TRAFFIC or TLS_HKDF_S_HS_TRAFFIC");
-				return FALSE;
-			}
-		case HKDF_PHASE_3:
-			if (is_server && this->last_label_used == TLS_HKDF_S_AP_TRAFFIC)
-			{
-				break;
-			}
-			else if (this->last_label_used == TLS_HKDF_C_AP_TRAFFIC)
-			{
-				break;
-			}
-			else
-			{
-				DBG1(DBG_TLS, "in phase 3, last generated secret must either be"
-				  " TLS_HKDF_S_AP_TRAFFIC or TLS_HKDF_S_AP_TRAFFIC");
-				return FALSE;
-			}
-		default:
-			DBG1(DBG_TLS, "not allowed to return secret in current phase");
-			return FALSE;
+		secret = chunk_clone(this->server_traffic_secret);
+	}
+	else
+	{
+		secret = chunk_clone(this->client_traffic_secret);
 	}
 
-	if (!expand_label(this, this->okm, label, chunk_empty, length, &result))
+	if (!expand_label(this, secret, label, chunk_empty, length, &result))
 	{
 		DBG1(DBG_TLS, "unable to derive secret");
+		chunk_clear(&secret);
 		chunk_clear(&result);
 		return FALSE;
 	}
@@ -370,6 +345,7 @@ static bool get_shared_label_keys(private_tls_hkdf_t *this, chunk_t label,
 		return_secret(this, result, key);
 	}
 
+	chunk_clear(&secret);
 	chunk_clear(&result);
 	return TRUE;
 }
@@ -418,12 +394,23 @@ METHOD(tls_hkdf_t, generate_secret, bool,
 			DBG1(DBG_TLS, "invalid HKDF label");
 			return FALSE;
 	}
-	this->last_label_used = label;
 
 	if (!derive_secret(this, chunk_from_str(hkdf_labels[label]), messages))
 	{
 		DBG1(DBG_TLS, "unable to derive secret");
 		return FALSE;
+	}
+
+	if (label == TLS_HKDF_C_HS_TRAFFIC || label == TLS_HKDF_C_AP_TRAFFIC)
+	{
+		chunk_clear(&this->client_traffic_secret);
+		this->client_traffic_secret = chunk_clone(this->okm);
+	}
+
+	if (label == TLS_HKDF_S_HS_TRAFFIC || label == TLS_HKDF_S_AP_TRAFFIC)
+	{
+		chunk_clear(&this->server_traffic_secret);
+		this->server_traffic_secret = chunk_clone(this->okm);
 	}
 
 	if (secret)
@@ -444,27 +431,28 @@ METHOD(tls_hkdf_t, derive_key, bool,
 METHOD(tls_hkdf_t, derive_iv, bool,
 	private_tls_hkdf_t *this, bool is_server, size_t length, chunk_t *iv)
 {
-	return get_shared_label_keys(this, chunk_from_str("tls13 iv"),
-								 is_server, length, iv);
+	return get_shared_label_keys(this, chunk_from_str("tls13 iv"), is_server,
+								 length, iv);
 }
 
-/**
- * :
- */
-METHOD(tls_hkdf_t, derive_finished, bool, private_tls_hkdf_t *this,
-	bool is_server, size_t length, chunk_t *finished)
+METHOD(tls_hkdf_t, derive_finished, bool,
+	private_tls_hkdf_t *this, bool is_server, chunk_t *finished)
 {
 	return get_shared_label_keys(this, chunk_from_str("tls13 finished"),
-								 is_server, length, finished);
+								 is_server,
+								 this->hasher->get_hash_size(this->hasher),
+								 finished);
 }
 
 METHOD(tls_hkdf_t, destroy, void,
-	private_tls_hkdf_t *this)
+private_tls_hkdf_t *this)
 {
 	chunk_free(&this->ikm);
 	chunk_clear(&this->prk);
 	chunk_clear(&this->shared_secret);
 	chunk_clear(&this->okm);
+	chunk_clear(&this->client_traffic_secret);
+	chunk_clear(&this->server_traffic_secret);
 	DESTROY_IF(this->prf);
 	DESTROY_IF(this->hasher);
 	free(this);
