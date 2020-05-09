@@ -1419,7 +1419,6 @@ static status_t send_certificate_verify(private_tls_peer_t *this,
 static status_t send_finished(private_tls_peer_t *this,
 							  tls_handshake_type_t *type, bio_writer_t *writer)
 {
-	DBG2(DBG_TLS, "\tWe're in send_finished!");
 	chunk_t verify_data;
 
 	if (this->tls->get_version_max(this->tls) < TLS_1_3)
