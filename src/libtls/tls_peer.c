@@ -41,10 +41,11 @@ typedef enum {
 	/* new states in TLS 1.3 */
 	STATE_HELLORETRYREQ_RECEIVED,
 	STATE_ENCRYPTED_EXTENSIONS_RECEIVED,
-	STATE_CIPHERSPEC13_RECEIVED,
-	STATE_HELLO13_RECEIVED,
 	STATE_CERT_VERIFY_RECEIVED,
-	STATE_FINISHED13_RECEIVED,
+	STATE_CRYPTO_1,
+	STATE_CRYPTO_2,
+	STATE_HANDSHAKE_DONE,
+	STATE_FINISHED_SENT_KEY_SWICHED,
 
 } peer_state_t;
 
@@ -262,29 +263,21 @@ static status_t process_server_hello(private_tls_peer_t *this,
 		this->session = chunk_clone(session);
 	}
 
-	if (this->tls->get_version_max(this->tls) < TLS_1_3)
-	{
-		this->state = STATE_HELLO_RECEIVED;
-	}
-	else
+	if (this->tls->get_version_max(this->tls) == TLS_1_3)
 	{
 		chunk_t shared_secret;
-		if(!this->dh->get_shared_secret(this->dh, &shared_secret))
+		if (!this->dh->get_shared_secret(this->dh, &shared_secret))
 		{
 			DBG2(DBG_TLS, "No shared secret key found");
 		}
-		else
-		{
-			if(!this->crypto->derive_handshake_secret(this->crypto,
-				shared_secret))
-			{
-				DBG2(DBG_TLS, "Derive handshake traffic secret failed");
-			}
-		}
 
-		this->state = STATE_HELLO13_RECEIVED;
+		if (!this->crypto->derive_handshake_secret(this->crypto, shared_secret))
+		{
+			DBG2(DBG_TLS, "derive handshake traffic secret failed");
+		}
 	}
 
+	this->state = STATE_HELLO_RECEIVED;
 	return NEED_MORE;
 }
 
@@ -299,7 +292,6 @@ static status_t process_encrypted_extensions(private_tls_peer_t *this,
 	int offset = 0;
 	uint16_t extension_type, extension_length;
 
-	// TODO? Appended for transcript hash
 	this->crypto->append_handshake(this->crypto,
 	                               TLS_ENCRYPTED_EXTENSIONS, reader->peek(reader));
 
@@ -860,6 +852,7 @@ static status_t process_hello_done(private_tls_peer_t *this,
  */
 static status_t process_finished(private_tls_peer_t *this, bio_reader_t *reader)
 {
+	DBG2(DBG_TLS, "# in process_finished");
 	chunk_t received, verify_data;
 	char buf[12];
 
@@ -884,7 +877,6 @@ static status_t process_finished(private_tls_peer_t *this, bio_reader_t *reader)
 			return NEED_MORE;
 		}
 
-		this->state = STATE_FINISHED_RECEIVED;
 	}
 	else
 	{
@@ -909,11 +901,9 @@ static status_t process_finished(private_tls_peer_t *this, bio_reader_t *reader)
 			this->alert->add(this->alert, TLS_FATAL, TLS_DECRYPT_ERROR);
 			return NEED_MORE;
 		}
-
-
-		this->state = STATE_FINISHED13_RECEIVED;
 	}
 
+	this->state = STATE_FINISHED_RECEIVED;
 	this->crypto->append_handshake(this->crypto, TLS_FINISHED, received);
 
 	return NEED_MORE;
@@ -927,6 +917,7 @@ static status_t change_to_app_keys(private_tls_peer_t *this)
 	{
 		DBG2(DBG_TLS, "Derive application traffic secret failed");
 	}
+	this->state = STATE_HANDSHAKE_DONE;
 
 	return NEED_MORE;
 }
@@ -935,94 +926,111 @@ METHOD(tls_handshake_t, process, status_t,
 	private_tls_peer_t *this, tls_handshake_type_t type, bio_reader_t *reader)
 {
 	tls_handshake_type_t expected;
-	switch (this->state)
+
+	if (this->tls->get_version_max(this->tls) < TLS_1_3)
 	{
-		case STATE_HELLO_SENT:
-			if (type == TLS_SERVER_HELLO)
-			{
-				return process_server_hello(this, reader);
-			}
-			expected = TLS_SERVER_HELLO;
-			break;
-		case STATE_CIPHERSPEC13_RECEIVED:
-			/* fall through since ChangeCipherspec is only a dummy in TLS 1.3 */
-		case STATE_HELLO13_RECEIVED:
-			if (type == TLS_ENCRYPTED_EXTENSIONS)
-			{
-				return process_encrypted_extensions(this, reader);
-			}
-			expected = TLS_ENCRYPTED_EXTENSIONS;
-			break;
-		case STATE_HELLO_RECEIVED:
-			/* fall through since legacy TLS and TLS 1.3
-			 * expect the same message */
-		case STATE_ENCRYPTED_EXTENSIONS_RECEIVED:
-			if (type == TLS_CERTIFICATE)
-			{
-				return process_certificate(this, reader);
-			}
-			expected = TLS_CERTIFICATE;
-			break;
-		case STATE_CERT_RECEIVED:
-			if (this->tls->get_version_max(this->tls) > TLS_1_2)
-			{
+		switch (this->state)
+		{
+			case STATE_HELLO_SENT:
+				if (type == TLS_SERVER_HELLO)
+				{
+					return process_server_hello(this, reader);
+				}
+				expected = TLS_SERVER_HELLO;
+				break;
+			case STATE_HELLO_RECEIVED:
+				if (type == TLS_CERTIFICATE)
+				{
+					return process_certificate(this, reader);
+				}
+				expected = TLS_CERTIFICATE;
+				break;
+			case STATE_CERT_RECEIVED:
+				if (type == TLS_SERVER_KEY_EXCHANGE)
+				{
+					return process_key_exchange(this, reader);
+				}
+				/* fall through since TLS_SERVER_KEY_EXCHANGE is optional */
+			case STATE_KEY_EXCHANGE_RECEIVED:
+				if (type == TLS_CERTIFICATE_REQUEST)
+				{
+					return process_certreq(this, reader);
+				}
+				/* no cert request, server does not want to authenticate us */
+				DESTROY_IF(this->peer);
+				this->peer = NULL;
+				/* fall through since TLS_CERTIFICATE_REQUEST is optional */
+			case STATE_CERTREQ_RECEIVED:
+				if (type == TLS_SERVER_HELLO_DONE)
+				{
+					return process_hello_done(this, reader);
+				}
+				expected = TLS_SERVER_HELLO_DONE;
+				break;
+			case STATE_CIPHERSPEC_CHANGED_IN:
+				if (type == TLS_FINISHED)
+				{
+					return process_finished(this, reader);
+				}
+				expected = TLS_FINISHED;
+				break;
+			default:
+				DBG1(DBG_TLS, "TLS %N not expected in current state",
+					 tls_handshake_type_names, type);
+				this->alert->add(this->alert, TLS_FATAL, TLS_UNEXPECTED_MESSAGE);
+				return NEED_MORE;
+		}
+	}
+	else
+	{
+		switch (this->state)
+		{
+			case STATE_HELLO_SENT:
+				if (type == TLS_SERVER_HELLO)
+				{
+					return process_server_hello(this, reader);
+				}
+				expected = TLS_SERVER_HELLO;
+				break;
+			case STATE_HELLO_RECEIVED:
+				if (type == TLS_ENCRYPTED_EXTENSIONS)
+				{
+					return process_encrypted_extensions(this, reader);
+				}
+				expected = TLS_ENCRYPTED_EXTENSIONS;
+				break;
+			case STATE_ENCRYPTED_EXTENSIONS_RECEIVED:
+				if (type == TLS_CERTIFICATE)
+				{
+					return process_certificate(this, reader);
+				}
+				expected = TLS_CERTIFICATE;
+				break;
+			case STATE_CERT_RECEIVED:
 				if (type == TLS_CERTIFICATE_VERIFY)
 				{
 					return process_cert_verify(this, reader);
 				}
 				expected = TLS_CERTIFICATE_VERIFY;
 				break;
-			}
-			else
-			{
-				if (type == TLS_SERVER_KEY_EXCHANGE)
-				{
-					return process_key_exchange(this, reader);
-				}
-			}
-			/* fall through since TLS_SERVER_KEY_EXCHANGE is optional */
-		case STATE_KEY_EXCHANGE_RECEIVED:
-			if (type == TLS_CERTIFICATE_REQUEST)
-			{
-				return process_certreq(this, reader);
-			}
-			/* no cert request, server does not want to authenticate us */
-			DESTROY_IF(this->peer);
-			this->peer = NULL;
-			/* fall through since TLS_CERTIFICATE_REQUEST is optional */
-		case STATE_CERTREQ_RECEIVED:
-			if (type == TLS_SERVER_HELLO_DONE)
-			{
-				return process_hello_done(this, reader);
-			}
-			expected = TLS_SERVER_HELLO_DONE;
-			break;
-		case STATE_CERT_VERIFY_RECEIVED:
-			if (this->tls->get_version_max(this->tls) > TLS_1_2)
-			{
+			case STATE_CERT_VERIFY_RECEIVED:
 				if (type == TLS_FINISHED)
 				{
 					return process_finished(this, reader);
 				}
-			}
-			expected = TLS_FINISHED;
-			break;
-		case STATE_CIPHERSPEC_CHANGED_IN:
-			if (type == TLS_FINISHED)
-			{
-				return process_finished(this, reader);
-			}
-			expected = TLS_FINISHED;
-			break;
-		case STATE_FINISHED_SENT:
-			// TODO
-			return change_to_app_keys(this);
-		default:
-			DBG1(DBG_TLS, "TLS %N not expected in current state",
-			     tls_handshake_type_names, type);
-			this->alert->add(this->alert, TLS_FATAL, TLS_UNEXPECTED_MESSAGE);
-			return NEED_MORE;
+				expected = TLS_FINISHED;
+				break;
+			case STATE_FINISHED_RECEIVED:
+				DBG2(DBG_TLS, "now STATE_FINISHED_RECEIVED (process)");
+				return NEED_MORE;
+			default:
+				DBG1(DBG_TLS, "TLS %N not expected in current state",
+					 tls_handshake_type_names, type);
+				this->alert->add(this->alert, TLS_FATAL, TLS_UNEXPECTED_MESSAGE);
+				return NEED_MORE;
+		}
 	}
+
 	DBG1(DBG_TLS, "TLS %N expected, but received %N",
 		 tls_handshake_type_names, expected, tls_handshake_type_names, type);
 	this->alert->add(this->alert, TLS_FATAL, TLS_UNEXPECTED_MESSAGE);
@@ -1448,6 +1456,7 @@ static status_t send_finished(private_tls_peer_t *this,
 		}
 
 		writer->write_data(writer, chunk_from_thing(buf));
+		this->crypto->append_handshake(this->crypto, *type, writer->get_buf(writer));
 	}
 	else
 	{
@@ -1464,7 +1473,9 @@ static status_t send_finished(private_tls_peer_t *this,
 
 	*type = TLS_FINISHED;
 	this->state = STATE_FINISHED_SENT;
-	this->crypto->append_handshake(this->crypto, *type, writer->get_buf(writer));
+	/* BE CAREFUL AND DO NOT APPEND UNUSED/WRONG DATA TO HANDSHAKE
+	 * CLIENT_FINISHED is wrong in TLS 1.3 */
+	//this->crypto->append_handshake(this->crypto, *type, writer->get_buf(writer));
 
 	return NEED_MORE;
 }
@@ -1472,37 +1483,62 @@ static status_t send_finished(private_tls_peer_t *this,
 METHOD(tls_handshake_t, build, status_t,
 	private_tls_peer_t *this, tls_handshake_type_t *type, bio_writer_t *writer)
 {
-	switch (this->state)
+	if (this->tls->get_version_max(this->tls) < TLS_1_3)
 	{
-		case STATE_INIT:
-			return send_client_hello(this, type, writer);
-		case STATE_HELLO_DONE: /* after server hello done received */
-			/* checks if client auth needed */
-			if (this->peer)
-			{
-				return send_certificate(this, type, writer);
-			}
-			/* otherwise fall through to next state */
-		case STATE_CERT_SENT:
-			return send_key_exchange(this, type, writer);
-		case STATE_KEY_EXCHANGE_SENT:
-			if (this->peer)
-			{
-				return send_certificate_verify(this, type, writer);
-			}
-			else
-			{
+		switch (this->state)
+		{
+			case STATE_INIT:
+				return send_client_hello(this, type, writer);
+			case STATE_HELLO_DONE:
+				if (this->peer)
+				{
+					return send_certificate(this, type, writer);
+				}
+				/* otherwise fall through to next state */
+			case STATE_CERT_SENT:
+				return send_key_exchange(this, type, writer);
+			case STATE_KEY_EXCHANGE_SENT:
+				if (this->peer)
+				{
+					return send_certificate_verify(this, type, writer);
+				}
+				else
+				{
+					return INVALID_STATE;
+				}
+			case STATE_CIPHERSPEC_CHANGED_OUT:
+				return send_finished(this, type, writer);
+			default:
 				return INVALID_STATE;
-			}
-		case STATE_FINISHED13_RECEIVED:
-		case STATE_FINISHED_RECEIVED:
-			/* fall through since legacy TLS and TLS 1.3
-	        * expect the same message */
-		case STATE_CIPHERSPEC_CHANGED_OUT:
-			return send_finished(this, type, writer);
-		default:
-			return INVALID_STATE;
+		}
 	}
+	else
+	{
+		switch (this->state)
+		{
+			case STATE_INIT:
+				return send_client_hello(this, type, writer);
+			case STATE_HELLO_DONE:
+				/* otherwise fall through to next state */
+			case STATE_FINISHED_RECEIVED:
+				/* fall through since legacy TLS and TLS 1.3
+				* expect the same message */
+				return send_finished(this, type, writer);
+			case STATE_FINISHED_SENT:
+				DBG2(DBG_TLS, "now in STATE_FINISHED_SENT (build)");
+				this->crypto->derive_app_secret(this->crypto);
+				this->crypto->change_cipher(this->crypto, TRUE);
+				this->crypto->change_cipher(this->crypto, FALSE);
+				this->state = STATE_FINISHED_SENT_KEY_SWICHED;
+				//return NEED_MORE;
+				return SUCCESS;
+			case STATE_FINISHED_SENT_KEY_SWICHED:
+				return SUCCESS;
+			default:
+				return INVALID_STATE;
+		}
+	}
+
 }
 
 METHOD(tls_handshake_t, cipherspec_changed, bool,
@@ -1535,7 +1571,18 @@ METHOD(tls_handshake_t, cipherspec_changed, bool,
 	}
 	else
 	{
-		return this->state == STATE_HELLO13_RECEIVED;
+		if (inbound)
+		{
+			return this->state == STATE_HELLO_RECEIVED;
+		}
+		else
+		{
+			if (this->state == STATE_FINISHED_RECEIVED)
+			{
+				return FALSE;
+			}
+			return FALSE;
+		}
 	}
 
 }
@@ -1559,7 +1606,11 @@ METHOD(tls_handshake_t, change_cipherspec, void,
 	{
 		if (inbound)
 		{
-			this->state = STATE_CIPHERSPEC13_RECEIVED;
+			this->state = STATE_HELLO_RECEIVED;
+		}
+		else
+		{
+
 		}
 	}
 }
@@ -1567,11 +1618,19 @@ METHOD(tls_handshake_t, change_cipherspec, void,
 METHOD(tls_handshake_t, finished, bool,
 	private_tls_peer_t *this)
 {
-	if (this->resume)
+	if (this->tls->get_version_max(this->tls) < TLS_1_3)
 	{
+		if (this->resume)
+		{
 		return this->state == STATE_FINISHED_SENT;
+		}
+
+		return this->state == STATE_FINISHED_RECEIVED;
 	}
-	return this->state == STATE_FINISHED_RECEIVED;
+	else
+	{
+		return this->state == STATE_FINISHED_SENT_KEY_SWICHED;
+	}
 }
 
 METHOD(tls_handshake_t, get_peer_id, identification_t*,
