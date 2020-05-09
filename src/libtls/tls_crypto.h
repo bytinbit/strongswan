@@ -554,6 +554,13 @@ struct tls_crypto_t {
 	bool (*derive_handshake_secret)(tls_crypto_t *this, chunk_t shared_secret);
 
 	/**
+	 * Derive the application keys.
+	 *
+	 * @return 					TRUE if	secret derived successfully
+	 */
+	bool (*derive_app_secret)(tls_crypto_t *this);
+
+	/**
 	 * Try to resume a TLS session, derive key material.
 	 *
 	 * @param session		session identifier

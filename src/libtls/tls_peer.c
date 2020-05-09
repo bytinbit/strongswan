@@ -278,7 +278,7 @@ static status_t process_server_hello(private_tls_peer_t *this,
 			if(!this->crypto->derive_handshake_secret(this->crypto,
 				shared_secret))
 			{
-				DBG2(DBG_TLS, "Derive handshake secret failed");
+				DBG2(DBG_TLS, "Derive handshake traffic secret failed");
 			}
 		}
 
@@ -919,6 +919,18 @@ static status_t process_finished(private_tls_peer_t *this, bio_reader_t *reader)
 	return NEED_MORE;
 }
 
+static status_t change_to_app_keys(private_tls_peer_t *this)
+{
+	DBG2(DBG_TLS, "####### We'd like to switch keys again now");
+	/* TODO: Client Application keys calc */
+	if (!this->crypto->derive_app_secret(this->crypto))
+	{
+		DBG2(DBG_TLS, "Derive application traffic secret failed");
+	}
+
+	return NEED_MORE;
+}
+
 METHOD(tls_handshake_t, process, status_t,
 	private_tls_peer_t *this, tls_handshake_type_t type, bio_reader_t *reader)
 {
@@ -1002,6 +1014,9 @@ METHOD(tls_handshake_t, process, status_t,
 			}
 			expected = TLS_FINISHED;
 			break;
+		case STATE_FINISHED_SENT:
+			// TODO
+			return change_to_app_keys(this);
 		default:
 			DBG1(DBG_TLS, "TLS %N not expected in current state",
 			     tls_handshake_type_names, type);
@@ -1450,7 +1465,7 @@ static status_t send_finished(private_tls_peer_t *this,
 	*type = TLS_FINISHED;
 	this->state = STATE_FINISHED_SENT;
 	this->crypto->append_handshake(this->crypto, *type, writer->get_buf(writer));
-	/* TODO: Client Application keys calc */
+
 	return NEED_MORE;
 }
 

@@ -2015,7 +2015,7 @@ METHOD(tls_crypto_t, derive_handshake_secret, bool, private_tls_crypto_t *this,
 	}
 
 	/* Server key material */
-	if(!this->hkdf->generate_secret(this->hkdf, TLS_HKDF_S_HS_TRAFFIC,
+	if (!this->hkdf->generate_secret(this->hkdf, TLS_HKDF_S_HS_TRAFFIC,
 	   this->handshake, NULL) ||
 	   !this->hkdf->derive_key(this->hkdf, TRUE, this->aead_in->
 	   get_encr_key_size(this->aead_in), &s_key) ||
@@ -2045,6 +2045,78 @@ METHOD(tls_crypto_t, derive_handshake_secret, bool, private_tls_crypto_t *this,
 	}
 	else
 	{
+		if (!this->aead_in->set_keys(this->aead_in, chunk_empty, s_key, s_iv) ||
+			!this->aead_out->set_keys(this->aead_out, chunk_empty, c_key, c_iv))
+		{
+			DBG1(DBG_TLS, "setting aead client key material failed");
+			chunk_clear(&c_key);
+			chunk_clear(&c_iv);
+			chunk_clear(&s_key);
+			chunk_clear(&s_iv);
+			return FALSE;
+		}
+	}
+
+	chunk_clear(&c_key);
+	chunk_clear(&c_iv);
+	chunk_clear(&s_key);
+	chunk_clear(&s_iv);
+	return TRUE;
+}
+
+/* TODO derive_app_secret and derive_handshake_secret could be refactored */
+METHOD(tls_crypto_t, derive_app_secret, bool, private_tls_crypto_t *this)
+{
+	chunk_t c_key, c_iv, s_key, s_iv;
+
+	/* Client key material */
+	if (!this->hkdf->generate_secret(this->hkdf, TLS_HKDF_C_AP_TRAFFIC,
+									 this->handshake, NULL) ||
+		!this->hkdf->derive_key(this->hkdf, FALSE,
+								this->aead_out->
+								get_encr_key_size(this->aead_out), &c_key) ||
+		!this->hkdf->derive_iv(this->hkdf, FALSE,
+							   this->aead_out->
+							   get_iv_size(this->aead_out), &c_iv))
+	{
+		DBG1(DBG_TLS, "deriving client key material failed");
+		chunk_clear(&c_key);
+		chunk_clear(&c_iv);
+		return FALSE;
+	}
+
+	/* Server key material */
+	if (!this->hkdf->generate_secret(this->hkdf, TLS_HKDF_S_AP_TRAFFIC,
+	   this->handshake, NULL) ||
+	   !this->hkdf->derive_key(this->hkdf, TRUE, this->aead_in->
+	   get_encr_key_size(this->aead_in), &s_key) ||
+	   !this->hkdf->derive_iv(this->hkdf, TRUE, this->aead_in->
+	   get_iv_size(this->aead_in), &s_iv))
+	{
+		DBG1(DBG_TLS, "deriving server key material failed");
+		chunk_clear(&c_key);
+		chunk_clear(&c_iv);
+		chunk_clear(&s_key);
+		chunk_clear(&s_iv);
+		return FALSE;
+	}
+
+	if (this->tls->is_server(this->tls))
+	{
+		if (!this->aead_in->set_keys(this->aead_in, chunk_empty, s_key, s_iv) ||
+			!this->aead_out->set_keys(this->aead_out, chunk_empty, c_key, c_iv))
+		{
+			DBG1(DBG_TLS, "setting aead server key material failed");
+			chunk_clear(&c_key);
+			chunk_clear(&c_iv);
+			chunk_clear(&s_key);
+			chunk_clear(&s_iv);
+			return FALSE;
+		}
+	}
+	else
+	{
+		DBG2(DBG_TLS, "@@@@@@@@@@ woooohooooo");
 		if (!this->aead_in->set_keys(this->aead_in, chunk_empty, s_key, s_iv) ||
 			!this->aead_out->set_keys(this->aead_out, chunk_empty, c_key, c_iv))
 		{
@@ -2164,6 +2236,7 @@ tls_crypto_t *tls_crypto_create(tls_t *tls, tls_cache_t *cache)
             .calculate_finished_tls13 = _calculate_finished_tls13,
 			.derive_secrets = _derive_secrets,
 			.derive_handshake_secret = _derive_handshake_secret,
+			.derive_app_secret = _derive_app_secret,
 			.resume_session = _resume_session,
 			.get_session = _get_session,
 			.change_cipher = _change_cipher,
