@@ -220,15 +220,13 @@ static status_t process_handshake(private_tls_fragmentation_t *this,
 static status_t process_application(private_tls_fragmentation_t *this,
 									bio_reader_t *reader)
 {
-	/* TODO: Application data is already sent during handshake = encrypted
-	 * part of handshake in TLS 1.3
-	 * if (!this->handshake->finished(this->handshake))
+	if (!this->handshake->finished(this->handshake))
 	{
 		DBG1(DBG_TLS, "received TLS application data, "
 			 "but handshake not finished");
 		return FAILED;
 	}
-	*/
+
 	while (reader->remaining(reader))
 	{
 		status_t status;
@@ -289,8 +287,6 @@ METHOD(tls_fragmentation_t, process, status_t,
 				status = NEED_MORE;
 				break;
 			}
-			status = FAILED;
-
 			status = NEED_MORE;
 			break;
 		case TLS_ALERT:
@@ -371,14 +367,17 @@ static status_t build_handshake(private_tls_fragmentation_t *this)
 				msg->write_data24(msg, hs->get_buf(hs));
 				DBG2(DBG_TLS, "sending TLS %N handshake (%u bytes)",
 					 tls_handshake_type_names, type, hs->get_buf(hs).len);
-/*
+
+				/* TODO comment out this block, then works for TLS 1.3
+				 * breaks TLS 1.3
 				if (!this->handshake->cipherspec_changed(this->handshake, FALSE))
 				{
 					DBG2(DBG_TLS, "# ooops, we destroy something here");
 					hs->destroy(hs);
 					continue;
 				}
-*/
+				*/
+
 				/* FALL */
 			case INVALID_STATE:
 				this->output_type = TLS_HANDSHAKE;
