@@ -2116,7 +2116,6 @@ METHOD(tls_crypto_t, derive_app_secret, bool, private_tls_crypto_t *this)
 	}
 	else
 	{
-		DBG2(DBG_TLS, "@@@@@@@@@@ woooohooooo");
 		if (!this->aead_in->set_keys(this->aead_in, chunk_empty, s_key, s_iv) ||
 			!this->aead_out->set_keys(this->aead_out, chunk_empty, c_key, c_iv))
 		{

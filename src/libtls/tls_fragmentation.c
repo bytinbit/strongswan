@@ -306,6 +306,7 @@ METHOD(tls_fragmentation_t, process, status_t,
 				break;
 			}
 			DBG2(DBG_TLS, "# got HANDSHAKE data but handshake is finished already");
+				status = process_handshake(this, reader);
 			/* fall */
 		case TLS_APPLICATION_DATA:
 			status = process_application(this, reader);

@@ -906,6 +906,43 @@ static status_t process_finished(private_tls_peer_t *this, bio_reader_t *reader)
 	return NEED_MORE;
 }
 
+/**
+ * Process New Session Ticket message
+ */
+static status_t process_new_session_ticket(private_tls_peer_t *this,
+											bio_reader_t *reader)
+{
+	uint32_t ticket_lifetime, ticket_age_add;
+	chunk_t ticket_nonce, ticket, extensions;
+
+	if(!reader->read_uint32(reader, &ticket_lifetime))
+	{
+		DBG1(DBG_TLS, "failed to read session ticket lifetime");
+	}
+
+	if(!reader->read_uint32(reader, &ticket_age_add))
+	{
+		DBG1(DBG_TLS, "failed to read session ticket age add");
+	}
+
+	if(!reader->read_data8(reader, &ticket_nonce))
+	{
+		DBG1(DBG_TLS, "failed to read session ticket nonce");
+	}
+
+	if(!reader->read_data16(reader, &ticket))
+	{
+		DBG1(DBG_TLS, "failed to read session ticket");
+	}
+	if(!reader->read_data16(reader, &extensions))
+	{
+		DBG1(DBG_TLS, "failed to read session ticket extensions");
+	}
+
+	return NEED_MORE;
+}
+
+
 METHOD(tls_handshake_t, process, status_t,
 	private_tls_peer_t *this, tls_handshake_type_t type, bio_reader_t *reader)
 {
@@ -1007,9 +1044,16 @@ METHOD(tls_handshake_t, process, status_t,
 			case STATE_FINISHED_RECEIVED:
 				DBG2(DBG_TLS, "now STATE_FINISHED_RECEIVED (process)");
 				return NEED_MORE;
+			case STATE_FINISHED_SENT_KEY_SWITCHED:
+				if (type == TLS_NEW_SESSION_TICKET)
+				{
+					return process_new_session_ticket(this, reader);
+				}
+				expected = TLS_NEW_SESSION_TICKET;
+				break;
 			default:
 				DBG1(DBG_TLS, "TLS %N not expected in current state",
-					 tls_handshake_type_names, type);
+				     tls_handshake_type_names, type);
 				this->alert->add(this->alert, TLS_FATAL, TLS_UNEXPECTED_MESSAGE);
 				return NEED_MORE;
 		}
