@@ -42,7 +42,7 @@ typedef enum {
 	STATE_HELLORETRYREQ_RECEIVED,
 	STATE_ENCRYPTED_EXTENSIONS_RECEIVED,
 	STATE_CERT_VERIFY_RECEIVED,
-	STATE_FINISHED_SENT_KEY_SWICHED,
+	STATE_FINISHED_SENT_KEY_SWITCHED,
 
 } peer_state_t;
 
@@ -869,9 +869,6 @@ static status_t process_finished(private_tls_peer_t *this, bio_reader_t *reader)
 		}
 		if (!chunk_equals_const(received, chunk_from_thing(buf)))
 		{
-			chunk_t foo = chunk_from_thing(buf);
-			DBG2(DBG_TLS, "received = %B", &received);
-			DBG2(DBG_TLS, "buf      = %B", &foo);
 			DBG1(DBG_TLS, "received server finished for legacy TLS invalid");
 			this->alert->add(this->alert, TLS_FATAL, TLS_DECRYPT_ERROR);
 			return NEED_MORE;
@@ -979,7 +976,6 @@ METHOD(tls_handshake_t, process, status_t,
 				}
 				expected = TLS_SERVER_HELLO;
 				break;
-			case STATE_CIPHERSPEC_CHANGED_IN:
 			case STATE_HELLO_RECEIVED:
 				if (type == TLS_ENCRYPTED_EXTENSIONS)
 				{
@@ -1432,8 +1428,6 @@ static status_t send_finished(private_tls_peer_t *this,
 {
 	chunk_t verify_data;
 
-	*type = TLS_FINISHED;
-
 	if (this->tls->get_version_max(this->tls) < TLS_1_3)
 	{
 		char buf[12];
@@ -1450,7 +1444,7 @@ static status_t send_finished(private_tls_peer_t *this,
 	}
 	else
 	{
-		if (!this->crypto->calculate_finished_tls13(this->crypto, false,
+		if(!this->crypto->calculate_finished_tls13(this->crypto, false,
 		   &verify_data))
 		{
 			DBG1(DBG_TLS, "calculating client finished data failed");
@@ -1461,7 +1455,14 @@ static status_t send_finished(private_tls_peer_t *this,
 		writer->write_data(writer, verify_data);
 	}
 
+	*type = TLS_FINISHED;
 	this->state = STATE_FINISHED_SENT;
+	/* BE CAREFUL AND DO NOT APPEND UNUSED/WRONG DATA TO HANDSHAKE
+	 * CLIENT_FINISHED is wrong in TLS 1.3
+	 * No need to append this message data to handschake, leads to wrong calculation on server-side
+	 * TODO do we still need to append finished to handshake? */
+	//this->crypto->append_handshake(this->crypto, *type, writer->get_buf(writer));
+
 	return NEED_MORE;
 }
 
@@ -1505,7 +1506,6 @@ METHOD(tls_handshake_t, build, status_t,
 				return send_client_hello(this, type, writer);
 			case STATE_HELLO_DONE:
 				/* otherwise fall through to next state */
-			case STATE_CIPHERSPEC_CHANGED_OUT:
 			case STATE_FINISHED_RECEIVED:
 				/* fall through since legacy TLS and TLS 1.3
 				* expect the same message */
@@ -1515,9 +1515,10 @@ METHOD(tls_handshake_t, build, status_t,
 				this->crypto->derive_app_secret(this->crypto);
 				this->crypto->change_cipher(this->crypto, TRUE);
 				this->crypto->change_cipher(this->crypto, FALSE);
-				this->state = STATE_FINISHED_SENT_KEY_SWICHED;
+				this->state = STATE_FINISHED_SENT_KEY_SWITCHED;
+				//return NEED_MORE;
 				return SUCCESS;
-			case STATE_FINISHED_SENT_KEY_SWICHED:
+			case STATE_FINISHED_SENT_KEY_SWITCHED:
 				return SUCCESS;
 			default:
 				return INVALID_STATE;
@@ -1537,6 +1538,7 @@ METHOD(tls_handshake_t, cipherspec_changed, bool,
 			{
 				return this->state == STATE_HELLO_RECEIVED;
 			}
+
 			return this->state == STATE_FINISHED_SENT;
 		}
 		else
@@ -1561,7 +1563,10 @@ METHOD(tls_handshake_t, cipherspec_changed, bool,
 		}
 		else
 		{
-			//return this->state == STATE_FINISHED_SENT;
+			if (this->state == STATE_FINISHED_RECEIVED)
+			{
+				return FALSE;
+			}
 			return FALSE;
 		}
 	}
@@ -1571,19 +1576,28 @@ METHOD(tls_handshake_t, cipherspec_changed, bool,
 METHOD(tls_handshake_t, change_cipherspec, void,
 	private_tls_peer_t *this, bool inbound)
 {
-
 	if (this->tls->get_version_max(this->tls) < TLS_1_3)
 	{
 		this->crypto->change_cipher(this->crypto, inbound);
-	}
-
-	if (inbound)
-	{
-		this->state = STATE_CIPHERSPEC_CHANGED_IN;
+		if (inbound)
+		{
+			this->state = STATE_CIPHERSPEC_CHANGED_IN;
+		}
+		else
+		{
+			this->state = STATE_CIPHERSPEC_CHANGED_OUT;
+		}
 	}
 	else
 	{
-		this->state = STATE_CIPHERSPEC_CHANGED_OUT;
+		if (inbound)
+		{
+			this->state = STATE_HELLO_RECEIVED;
+		}
+		else
+		{
+		 /* TODO left unifinshed */
+		}
 	}
 }
 
@@ -1601,7 +1615,7 @@ METHOD(tls_handshake_t, finished, bool,
 	}
 	else
 	{
-		return this->state == STATE_FINISHED_SENT_KEY_SWICHED;
+		return this->state == STATE_FINISHED_SENT_KEY_SWITCHED;
 	}
 }
 
