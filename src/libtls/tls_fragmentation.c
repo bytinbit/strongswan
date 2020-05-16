@@ -280,33 +280,23 @@ METHOD(tls_fragmentation_t, process, status_t,
 	switch (type)
 	{
 		case TLS_CHANGE_CIPHER_SPEC:
-			/* TODO comment out this block, then works for TLS 1.3 */
 			if (this->handshake->cipherspec_changed(this->handshake, TRUE))
 			{
 				this->handshake->change_cipherspec(this->handshake, TRUE);
 				status = NEED_MORE;
 				break;
 			}
-			status = NEED_MORE;
+			status = FAILED;
 			break;
 		case TLS_ALERT:
 			status = process_alert(this, reader);
 			break;
 		case TLS_HANDSHAKE:
+			status = process_handshake(this, reader);
 			if (!this->handshake->finished(this->handshake))
 			{
-				DBG2(DBG_TLS, "# Handshake is not finished yet -> process more handshake data");
-				/* TODO comment out this block, then works for TLS 1.3 */
-				if (this->handshake->cipherspec_changed(this->handshake, TRUE))
-				{
-					this->handshake->change_cipherspec(this->handshake, TRUE);
-				}
-
-				status = process_handshake(this, reader);
 				break;
 			}
-			DBG2(DBG_TLS, "# got HANDSHAKE data but handshake is finished already");
-				status = process_handshake(this, reader);
 			/* fall */
 		case TLS_APPLICATION_DATA:
 			status = process_application(this, reader);
@@ -368,17 +358,12 @@ static status_t build_handshake(private_tls_fragmentation_t *this)
 				msg->write_data24(msg, hs->get_buf(hs));
 				DBG2(DBG_TLS, "sending TLS %N handshake (%u bytes)",
 					 tls_handshake_type_names, type, hs->get_buf(hs).len);
-
-				/* TODO comment out this block, then works for TLS 1.3
-				 * breaks TLS 1.3
-				if (!this->handshake->cipherspec_changed(this->handshake, FALSE))
+				if (!this->handshake->cipherspec_changed(this->handshake, FALSE) &&
+					type != TLS_FINISHED)
 				{
-					DBG2(DBG_TLS, "# ooops, we destroy something here");
 					hs->destroy(hs);
 					continue;
 				}
-				*/
-
 				/* FALL */
 			case INVALID_STATE:
 				this->output_type = TLS_HANDSHAKE;
@@ -459,7 +444,6 @@ METHOD(tls_fragmentation_t, build, status_t,
 	}
 	if (!this->output.len)
 	{
-		/* TODO comment out this block, then works for TLS 1.3 */
 		if (this->handshake->cipherspec_changed(this->handshake, FALSE))
 		{
 			this->handshake->change_cipherspec(this->handshake, FALSE);

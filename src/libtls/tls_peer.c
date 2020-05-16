@@ -1027,7 +1027,6 @@ METHOD(tls_handshake_t, process, status_t,
 				expected = TLS_FINISHED;
 				break;
 			case STATE_FINISHED_RECEIVED:
-				DBG2(DBG_TLS, "now STATE_FINISHED_RECEIVED (process)");
 				return NEED_MORE;
 			case STATE_FINISHED_SENT_KEY_SWITCHED:
 				if (type == TLS_NEW_SESSION_TICKET)
