@@ -220,15 +220,12 @@ static status_t process_handshake(private_tls_fragmentation_t *this,
 static status_t process_application(private_tls_fragmentation_t *this,
 									bio_reader_t *reader)
 {
-	/* TODO: Application data is already sent during handshake = encrypted
-	 * part of handshake in TLS 1.3
-	 * if (!this->handshake->finished(this->handshake))
+	if (!this->handshake->finished(this->handshake))
 	{
 		DBG1(DBG_TLS, "received TLS application data, "
 			 "but handshake not finished");
 		return FAILED;
 	}
-	*/
 	while (reader->remaining(reader))
 	{
 		status_t status;
@@ -282,7 +279,6 @@ METHOD(tls_fragmentation_t, process, status_t,
 	switch (type)
 	{
 		case TLS_CHANGE_CIPHER_SPEC:
-/*
 			if (this->handshake->cipherspec_changed(this->handshake, TRUE))
 			{
 				this->handshake->change_cipherspec(this->handshake, TRUE);
@@ -290,8 +286,6 @@ METHOD(tls_fragmentation_t, process, status_t,
 				break;
 			}
 			status = FAILED;
-*/
-			status = NEED_MORE;
 			break;
 		case TLS_ALERT:
 			status = process_alert(this, reader);
@@ -300,12 +294,6 @@ METHOD(tls_fragmentation_t, process, status_t,
 			if (!this->handshake->finished(this->handshake))
 			{
 				DBG2(DBG_TLS, "# Handshake is not finished yet -> process more handshake data");
-/*
-				if (this->handshake->cipherspec_changed(this->handshake, TRUE))
-				{
-					this->handshake->change_cipherspec(this->handshake, TRUE);
-				}
-*/
 				status = process_handshake(this, reader);
 				break;
 			}
@@ -371,14 +359,14 @@ static status_t build_handshake(private_tls_fragmentation_t *this)
 				msg->write_data24(msg, hs->get_buf(hs));
 				DBG2(DBG_TLS, "sending TLS %N handshake (%u bytes)",
 					 tls_handshake_type_names, type, hs->get_buf(hs).len);
-/*
-				if (!this->handshake->cipherspec_changed(this->handshake, FALSE))
+				if (!this->handshake->cipherspec_changed(this->handshake, FALSE) &&
+					type != TLS_FINISHED)
 				{
 					DBG2(DBG_TLS, "# ooops, we destroy something here");
+					DBG2(DBG_TLS, "## type = %d", type);
 					hs->destroy(hs);
 					continue;
 				}
-*/
 				/* FALL */
 			case INVALID_STATE:
 				this->output_type = TLS_HANDSHAKE;
@@ -459,7 +447,6 @@ METHOD(tls_fragmentation_t, build, status_t,
 	}
 	if (!this->output.len)
 	{
-/*
 		if (this->handshake->cipherspec_changed(this->handshake, FALSE))
 		{
 			this->handshake->change_cipherspec(this->handshake, FALSE);
@@ -467,7 +454,6 @@ METHOD(tls_fragmentation_t, build, status_t,
 			*data = chunk_clone(chunk_from_chars(0x01));
 			return NEED_MORE;
 		}
-*/
 		if (!this->handshake->finished(this->handshake))
 		{
 			status = build_handshake(this);
