@@ -849,7 +849,6 @@ static status_t process_hello_done(private_tls_peer_t *this,
  */
 static status_t process_finished(private_tls_peer_t *this, bio_reader_t *reader)
 {
-	DBG2(DBG_TLS, "# in process_finished");
 	chunk_t received, verify_data;
 	char buf[12];
 
@@ -915,30 +914,16 @@ static status_t process_new_session_ticket(private_tls_peer_t *this,
 	uint32_t ticket_lifetime, ticket_age_add;
 	chunk_t ticket_nonce, ticket, extensions;
 
-	if (!reader->read_uint32(reader, &ticket_lifetime))
+	if (!reader->read_uint32(reader, &ticket_lifetime) ||
+		!reader->read_uint32(reader, &ticket_age_add) ||
+		!reader->read_data8(reader, &ticket_nonce) ||
+		!reader->read_data16(reader, &ticket) ||
+		!reader->read_data16(reader, &extensions))
 	{
-		DBG1(DBG_TLS, "failed to read session ticket lifetime");
+		DBG1(DBG_TLS, "received invalid NewSessionTicket");
+		this->alert->add(this->alert, TLS_FATAL, TLS_DECODE_ERROR);
+		return NEED_MORE;
 	}
-
-	if (!reader->read_uint32(reader, &ticket_age_add))
-	{
-		DBG1(DBG_TLS, "failed to read session ticket age add");
-	}
-
-	if (!reader->read_data8(reader, &ticket_nonce))
-	{
-		DBG1(DBG_TLS, "failed to read session ticket nonce");
-	}
-
-	if (!reader->read_data16(reader, &ticket))
-	{
-		DBG1(DBG_TLS, "failed to read session ticket");
-	}
-	if (!reader->read_data16(reader, &extensions))
-	{
-		DBG1(DBG_TLS, "failed to read session ticket extensions");
-	}
-
 	return NEED_MORE;
 }
 
