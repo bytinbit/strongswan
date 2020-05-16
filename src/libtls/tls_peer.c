@@ -915,33 +915,32 @@ static status_t process_new_session_ticket(private_tls_peer_t *this,
 	uint32_t ticket_lifetime, ticket_age_add;
 	chunk_t ticket_nonce, ticket, extensions;
 
-	if(!reader->read_uint32(reader, &ticket_lifetime))
+	if (!reader->read_uint32(reader, &ticket_lifetime))
 	{
 		DBG1(DBG_TLS, "failed to read session ticket lifetime");
 	}
 
-	if(!reader->read_uint32(reader, &ticket_age_add))
+	if (!reader->read_uint32(reader, &ticket_age_add))
 	{
 		DBG1(DBG_TLS, "failed to read session ticket age add");
 	}
 
-	if(!reader->read_data8(reader, &ticket_nonce))
+	if (!reader->read_data8(reader, &ticket_nonce))
 	{
 		DBG1(DBG_TLS, "failed to read session ticket nonce");
 	}
 
-	if(!reader->read_data16(reader, &ticket))
+	if (!reader->read_data16(reader, &ticket))
 	{
 		DBG1(DBG_TLS, "failed to read session ticket");
 	}
-	if(!reader->read_data16(reader, &extensions))
+	if (!reader->read_data16(reader, &extensions))
 	{
 		DBG1(DBG_TLS, "failed to read session ticket extensions");
 	}
 
 	return NEED_MORE;
 }
-
 
 METHOD(tls_handshake_t, process, status_t,
 	private_tls_peer_t *this, tls_handshake_type_t type, bio_reader_t *reader)
@@ -1013,6 +1012,7 @@ METHOD(tls_handshake_t, process, status_t,
 				}
 				expected = TLS_SERVER_HELLO;
 				break;
+			case STATE_CIPHERSPEC_CHANGED_IN:
 			case STATE_HELLO_RECEIVED:
 				if (type == TLS_ENCRYPTED_EXTENSIONS)
 				{
@@ -1053,7 +1053,7 @@ METHOD(tls_handshake_t, process, status_t,
 				break;
 			default:
 				DBG1(DBG_TLS, "TLS %N not expected in current state",
-				     tls_handshake_type_names, type);
+					 tls_handshake_type_names, type);
 				this->alert->add(this->alert, TLS_FATAL, TLS_UNEXPECTED_MESSAGE);
 				return NEED_MORE;
 		}
@@ -1472,6 +1472,8 @@ static status_t send_finished(private_tls_peer_t *this,
 {
 	chunk_t verify_data;
 
+	*type = TLS_FINISHED;
+
 	if (this->tls->get_version_max(this->tls) < TLS_1_3)
 	{
 		char buf[12];
@@ -1488,7 +1490,7 @@ static status_t send_finished(private_tls_peer_t *this,
 	}
 	else
 	{
-		if(!this->crypto->calculate_finished_tls13(this->crypto, false,
+		if (!this->crypto->calculate_finished_tls13(this->crypto, false,
 		   &verify_data))
 		{
 			DBG1(DBG_TLS, "calculating client finished data failed");
@@ -1499,14 +1501,7 @@ static status_t send_finished(private_tls_peer_t *this,
 		writer->write_data(writer, verify_data);
 	}
 
-	*type = TLS_FINISHED;
 	this->state = STATE_FINISHED_SENT;
-	/* BE CAREFUL AND DO NOT APPEND UNUSED/WRONG DATA TO HANDSHAKE
-	 * CLIENT_FINISHED is wrong in TLS 1.3
-	 * No need to append this message data to handschake, leads to wrong calculation on server-side
-	 * TODO do we still need to append finished to handshake? */
-	//this->crypto->append_handshake(this->crypto, *type, writer->get_buf(writer));
-
 	return NEED_MORE;
 }
 
@@ -1550,6 +1545,7 @@ METHOD(tls_handshake_t, build, status_t,
 				return send_client_hello(this, type, writer);
 			case STATE_HELLO_DONE:
 				/* otherwise fall through to next state */
+			case STATE_CIPHERSPEC_CHANGED_OUT:
 			case STATE_FINISHED_RECEIVED:
 				/* fall through since legacy TLS and TLS 1.3
 				* expect the same message */
@@ -1582,7 +1578,6 @@ METHOD(tls_handshake_t, cipherspec_changed, bool,
 			{
 				return this->state == STATE_HELLO_RECEIVED;
 			}
-
 			return this->state == STATE_FINISHED_SENT;
 		}
 		else
@@ -1607,10 +1602,6 @@ METHOD(tls_handshake_t, cipherspec_changed, bool,
 		}
 		else
 		{
-			if (this->state == STATE_FINISHED_RECEIVED)
-			{
-				return FALSE;
-			}
 			return FALSE;
 		}
 	}
@@ -1623,25 +1614,15 @@ METHOD(tls_handshake_t, change_cipherspec, void,
 	if (this->tls->get_version_max(this->tls) < TLS_1_3)
 	{
 		this->crypto->change_cipher(this->crypto, inbound);
-		if (inbound)
-		{
-			this->state = STATE_CIPHERSPEC_CHANGED_IN;
-		}
-		else
-		{
-			this->state = STATE_CIPHERSPEC_CHANGED_OUT;
-		}
+	}
+
+	if (inbound)
+	{
+		this->state = STATE_CIPHERSPEC_CHANGED_IN;
 	}
 	else
 	{
-		if (inbound)
-		{
-			this->state = STATE_HELLO_RECEIVED;
-		}
-		else
-		{
-		 /* TODO left unifinshed */
-		}
+		this->state = STATE_CIPHERSPEC_CHANGED_OUT;
 	}
 }
 
