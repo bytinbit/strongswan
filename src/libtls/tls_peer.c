@@ -851,6 +851,7 @@ static status_t process_finished(private_tls_peer_t *this, bio_reader_t *reader)
 {
 	chunk_t received, verify_data;
 	char buf[12];
+	uint32_t hash_length;
 
 	if (this->tls->get_version_max(this->tls) < TLS_1_3)
 	{
@@ -872,13 +873,11 @@ static status_t process_finished(private_tls_peer_t *this, bio_reader_t *reader)
 			this->alert->add(this->alert, TLS_FATAL, TLS_DECRYPT_ERROR);
 			return NEED_MORE;
 		}
-
 	}
 	else
 	{
-		/* TODO: we allocate here size for sha256 (32 bytes) only,
-		 * but should also think of sha384 that has a different output size */
-		if (!reader->read_data(reader, 32, &received))
+		hash_length = reader->remaining(reader);
+		if (!reader->read_data(reader, hash_length, &received))
 		{
 			DBG1(DBG_TLS, "received server finished too short");
 			this->alert->add(this->alert, TLS_FATAL, TLS_DECODE_ERROR);

@@ -499,7 +499,8 @@ static suite_algs_t suite_algs[] = {
 	{ TLS_CHACHA20_POLY1305_SHA256,
         KEY_ANY, MODP_NONE,
 		HASH_SHA256, PRF_UNDEFINED,
-		AUTH_HMAC_SHA2_256_256, ENCR_CHACHA20_POLY1305, 16
+		AUTH_HMAC_SHA2_256_256, ENCR_CHACHA20_POLY1305, 16,
+		TLS_1_3,
 	},
 	{ TLS_AES_128_CCM_SHA256,
 	  KEY_ANY, MODP_NONE,
@@ -1292,7 +1293,6 @@ static bool create_ciphers(private_tls_crypto_t *this, suite_algs_t *algs)
     }
 	else
     {
-	    /* TODO handle HKDF in TLS 1.3 */
 	    this->hkdf = tls_hkdf_create(algs->hash, chunk_empty);
 	    if (!this->hkdf)
 	    {
@@ -1851,6 +1851,7 @@ METHOD(tls_crypto_t, calculate_finished_tls13, bool,
        private_tls_crypto_t *this, bool is_server, chunk_t *out)
 {
 	chunk_t finished_key, finished_hash;
+	prf_t *prf;
 
 	this->hkdf->derive_finished(this->hkdf, is_server, &finished_key);
 	if (!hash_data(this, this->handshake, &finished_hash))
@@ -1858,7 +1859,14 @@ METHOD(tls_crypto_t, calculate_finished_tls13, bool,
 		DBG1(DBG_TLS, "creating hash of handshake failed");
 	}
 
-	prf_t *prf = lib->crypto->create_prf(lib->crypto, PRF_HMAC_SHA2_256);
+	if (this->suite == TLS_AES_256_GCM_SHA384)
+	{
+		prf = lib->crypto->create_prf(lib->crypto, PRF_HMAC_SHA2_384);
+	}
+	else
+	{
+		prf = lib->crypto->create_prf(lib->crypto, PRF_HMAC_SHA2_256);
+	}
 	if(!prf->set_key(prf, finished_key) ||
 	   !prf->allocate_bytes(prf, finished_hash, out))
 	{
@@ -2064,7 +2072,6 @@ METHOD(tls_crypto_t, derive_handshake_secret, bool, private_tls_crypto_t *this,
 	return TRUE;
 }
 
-/* TODO derive_app_secret and derive_handshake_secret could be refactored */
 METHOD(tls_crypto_t, derive_app_secret, bool, private_tls_crypto_t *this)
 {
 	chunk_t c_key, c_iv, s_key, s_iv;
