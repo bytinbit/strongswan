@@ -111,36 +111,6 @@ struct tls_hkdf_t {
 							chunk_t *finished);
 
 	/**
-	 * Returns the traffic encryption key.
-	 *
-	 * @param is_server			TRUE if server, FALSE if client derives key
-	 * @param length			key length, in bytes
-	 * @param key				secret will be written into this chunk
-	 * @return					TRUE if secrets derived successfully
-	 */
-	bool (*derive_key)(tls_hkdf_t *this, bool is_server, size_t length, chunk_t *key);
-
-	/**
-	 * Returns the traffic IV.
-	 *
-	 * @param is_server			TRUE if server, FALSE if client derives IV
-	 * @param length			key length, in bytes
-	 * @param iv				IV will be written into this chunk
-	 * @return					TRUE if secrets derived successfully
-	 */
-	bool (*derive_iv)(tls_hkdf_t *this, bool is_server, size_t length, chunk_t *iv);
-
-	/**
-	 * Returns finished key of the Finished message.
-	 *
-	 * @param is_server			TRUE if server, FALSE if client derives IV
-	 * @param length			key length, in bytes
-	 * @param finished			key will be written into this chunk
-	 * @return					TRUE if secrets derived successfully
-	 */
-	bool (*derive_finished)(tls_hkdf_t *this, bool is_server, size_t length, chunk_t *finished);
-
-	/**
 	 * Destroy a tls_hkdf_t
 	 */
 	void (*destroy)(tls_hkdf_t *this);

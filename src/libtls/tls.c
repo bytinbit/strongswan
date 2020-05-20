@@ -23,7 +23,6 @@
 #include "tls_crypto.h"
 #include "tls_server.h"
 #include "tls_peer.h"
-#include "../../../../../../../usr/include/linux/ethtool.h"
 
 ENUM_BEGIN(tls_version_names, SSL_2_0, SSL_2_0,
 	"SSLv2");
@@ -32,8 +31,7 @@ ENUM_NEXT(tls_version_names, SSL_3_0, TLS_1_3, SSL_2_0,
 	"TLS 1.0",
 	"TLS 1.1",
 	"TLS 1.2",
-	"TLS 1.3",
-);
+	"TLS 1.3",);
 ENUM_END(tls_version_names, TLS_1_3);
 
 ENUM(tls_content_type_names, TLS_CHANGE_CIPHER_SPEC, TLS_APPLICATION_DATA,
@@ -52,13 +50,10 @@ ENUM_NEXT(tls_handshake_type_names,
 	"HelloVerifyRequest",
 	"NewSessionTicket",
 	"EndOfEarlyData",
-	"HelloRetryRequest",
-);
+	"HelloRetryRequest");
 ENUM_NEXT(tls_handshake_type_names,
-	    TLS_ENCRYPTED_EXTENSIONS, TLS_ENCRYPTED_EXTENSIONS,
-		TLS_HELLO_RETRY_REQUEST,
-		"EncryptedExtensions",
-);
+		TLS_ENCRYPTED_EXTENSIONS, TLS_ENCRYPTED_EXTENSIONS, TLS_HELLO_RETRY_REQUEST,
+	"EncryptedExtensions");
 ENUM_NEXT(tls_handshake_type_names,
 		TLS_CERTIFICATE, TLS_CLIENT_KEY_EXCHANGE, TLS_ENCRYPTED_EXTENSIONS,
 	"Certificate",
@@ -66,20 +61,17 @@ ENUM_NEXT(tls_handshake_type_names,
 	"CertificateRequest",
 	"ServerHelloDone",
 	"CertificateVerify",
-	"ClientKeyExchange",
-);
+	"ClientKeyExchange");
 ENUM_NEXT(tls_handshake_type_names,
 		  TLS_FINISHED, TLS_KEY_UPDATE, TLS_CLIENT_KEY_EXCHANGE,
 	"Finished",
 	"CertificateUrl",
 	"CertificateStatus",
 	"SupplementalData",
-	"KeyUpdate",
-);
+	"KeyUpdate");
 ENUM_NEXT(tls_handshake_type_names,
 		TLS_MESSAGE_HASH, TLS_MESSAGE_HASH, TLS_KEY_UPDATE,
-	"MessageHash",
-);
+	"MessageHash");
 ENUM_END(tls_handshake_type_names, TLS_MESSAGE_HASH);
 
 ENUM_BEGIN(tls_extension_names, TLS_EXT_SERVER_NAME, TLS_EXT_STATUS_REQUEST,
@@ -88,37 +80,31 @@ ENUM_BEGIN(tls_extension_names, TLS_EXT_SERVER_NAME, TLS_EXT_STATUS_REQUEST,
 	"client certificate url",
 	"trusted ca keys",
 	"truncated hmac",
-	"status request",
-);
+	"status request");
 ENUM_NEXT(tls_extension_names,
-          TLS_EXT_SUPPORTED_GROUPS, TLS_EXT_EC_POINT_FORMATS,
-          TLS_EXT_STATUS_REQUEST,
-          "supported groups",
-          "ec point formats");
-ENUM_NEXT(tls_extension_names, // name, first, last, prv
+		TLS_EXT_SUPPORTED_GROUPS, TLS_EXT_EC_POINT_FORMATS, TLS_EXT_STATUS_REQUEST,
+	"supported groups",
+	"ec point formats");
+ENUM_NEXT(tls_extension_names,
 		TLS_EXT_SIGNATURE_ALGORITHMS,
-		TLS_EXT_APPLICATION_LAYER_PROTOCOL_NEGOTIATION,
-		TLS_EXT_EC_POINT_FORMATS,
+		TLS_EXT_APPLICATION_LAYER_PROTOCOL_NEGOTIATION, TLS_EXT_EC_POINT_FORMATS,
 	"signature algorithms",
 	"use rtp",
 	"heartbeat",
-	"application layer protocol negotiation",
-);
+	"application layer protocol negotiation");
 ENUM_NEXT(tls_extension_names,
-	TLS_CLIENT_CERTIFICATE_TYPE, TLS_SERVER_CERTIFICATE_TYPE,
-	      TLS_EXT_APPLICATION_LAYER_PROTOCOL_NEGOTIATION,
+		TLS_CLIENT_CERTIFICATE_TYPE, TLS_SERVER_CERTIFICATE_TYPE,
+		TLS_EXT_APPLICATION_LAYER_PROTOCOL_NEGOTIATION,
 	"client certificate type",
-	"server certificate type",
-);
+	"server certificate type");
 ENUM_NEXT(tls_extension_names,
 		TLS_EXT_PRE_SHARED_KEY, TLS_EXT_PSK_KEY_EXCHANGE_MODES,
-		  TLS_SERVER_CERTIFICATE_TYPE,
+		TLS_SERVER_CERTIFICATE_TYPE,
 	"pre-shared key",
 	"early data",
 	"supported versions",
 	"cookie",
-	"psk key exchange modes",
-);
+	"psk key exchange modes");
 ENUM_NEXT(tls_extension_names,
 		TLS_EXT_CERTIFICATE_AUTHORITIES, TLS_EXT_KEY_SHARE,
 		TLS_EXT_PSK_KEY_EXCHANGE_MODES,
@@ -126,13 +112,11 @@ ENUM_NEXT(tls_extension_names,
 	"oid filters",
 	"post-handshake auth",
 	"signature algorithms cert",
-	"key-share",
-);
+	"key-share");
 ENUM_NEXT(tls_extension_names,
 		TLS_EXT_RENEGOTIATION_INFO, TLS_EXT_RENEGOTIATION_INFO,
 		TLS_EXT_KEY_SHARE,
-	"renegotiation info",
-);
+	"renegotiation info");
 ENUM_END(tls_extension_names, TLS_EXT_RENEGOTIATION_INFO);
 
 /**
@@ -293,7 +277,6 @@ METHOD(tls_t, process, status_t,
 				}
 				DBG2(DBG_TLS, "processing TLS %N record (%d bytes)",
 					 tls_content_type_names, record->type, len);
-
 				status = this->protection->process(this->protection,
 								record->type, chunk_create(record->data, len));
 				if (status != NEED_MORE)

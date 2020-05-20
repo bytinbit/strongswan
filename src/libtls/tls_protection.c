@@ -73,12 +73,13 @@ METHOD(tls_protection_t, process, status_t,
 		return NEED_MORE;
 	}
 
-	if (this-> version < TLS_1_3 || type == TLS_APPLICATION_DATA)
+	if (this-> version < TLS_1_3 ||
+	    type == TLS_APPLICATION_DATA)
 	{
 		if (this->aead_in)
 		{
 			if (!this->aead_in->decrypt(this->aead_in, this->version,
-			                            &type, this->seq_in, &data))
+										&type, this->seq_in, &data))
 			{
 				DBG1(DBG_TLS, "TLS record decryption failed");
 				this->alert->add(this->alert, TLS_FATAL, TLS_BAD_RECORD_MAC);
@@ -88,7 +89,6 @@ METHOD(tls_protection_t, process, status_t,
 		this->seq_in++;
 	}
 	return this->compression->process(this->compression, type, data);
-
 }
 
 METHOD(tls_protection_t, build, status_t,
@@ -106,7 +106,7 @@ METHOD(tls_protection_t, build, status_t,
 		if (this->aead_out)
 		{
 			if (!this->aead_out->encrypt(this->aead_out, this->version,
-			                             type, this->seq_out, data))
+										 type, this->seq_out, data))
 			{
 				DBG1(DBG_TLS, "TLS record encryption failed");
 				chunk_free(data);

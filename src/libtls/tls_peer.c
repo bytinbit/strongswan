@@ -37,7 +37,6 @@ typedef enum {
 	STATE_FINISHED_SENT,
 	STATE_CIPHERSPEC_CHANGED_IN,
 	STATE_FINISHED_RECEIVED,
-
 	/* new states in TLS 1.3 */
 	STATE_HELLORETRYREQ_RECEIVED,
 	STATE_ENCRYPTED_EXTENSIONS_RECEIVED,
@@ -170,11 +169,14 @@ static status_t process_server_hello(private_tls_peer_t *this,
 		this->alert->add(this->alert, TLS_FATAL, TLS_DECODE_ERROR);
 		return NEED_MORE;
 	}
+
 	memcpy(this->server_random, random.ptr, sizeof(this->server_random));
 
 	bio_reader_t *extension_reader = bio_reader_create(ext);
 
-	/* parse extension to decide which tls version of the state machine we want to go*/
+	/* parse extension to decide which tls version of the state machine we
+	 * want to go
+	 */
 	while (offset < ext.len)
 	{
 		chunk_t extension_payload = chunk_empty;
@@ -208,7 +210,8 @@ static status_t process_server_hello(private_tls_peer_t *this,
 					DBG2(DBG_TLS, "no valid key share found in extension");
 				}
 
-				if(key_type != CURVE_25519 && !this->dh->set_other_public_value(this->dh, ext_key_share))
+				if (key_type != CURVE_25519 &&
+					!this->dh->set_other_public_value(this->dh, ext_key_share))
 				{
 					DBG2(DBG_TLS, "server key share unable to save");
 				}
@@ -232,18 +235,19 @@ static status_t process_server_hello(private_tls_peer_t *this,
 	{
 		if (chunk_equals(this->session, session))
 		{
-			suite = this->crypto->resume_session(this->crypto, session, this->server,
-			                                     chunk_from_thing(this->client_random),
-			                                     chunk_from_thing(this->server_random));
+			suite = this->crypto->resume_session(this->crypto, session,
+												 this->server, chunk_from_thing
+												 (this->client_random),
+												 chunk_from_thing
+			                                     (this->server_random));
 			if (suite)
 			{
 				DBG1(DBG_TLS, "resumed %N using suite %N",
-				     tls_version_names, version, tls_cipher_suite_names, suite);
+					 tls_version_names, version, tls_cipher_suite_names, suite);
 				this->resume = TRUE;
 			}
 		}
 	}
-
 	if (!suite)
 	{
 		suite = cipher;
@@ -282,7 +286,7 @@ static status_t process_server_hello(private_tls_peer_t *this,
 * Process a server encrypted extensions message
 */
 static status_t process_encrypted_extensions(private_tls_peer_t *this,
-                             bio_reader_t *reader)
+											 bio_reader_t *reader)
 {
 	uint16_t length;
 	chunk_t ext = chunk_empty;
@@ -337,7 +341,8 @@ static status_t process_encrypted_extensions(private_tls_peer_t *this,
 					break;
 				default:
 					DBG1(DBG_TLS, "received forbidden EncryptedExtensions");
-					this->alert->add(this->alert, TLS_FATAL, TLS_ILLEGAL_PARAMETER);
+					this->alert->add(this->alert, TLS_FATAL,
+									 TLS_ILLEGAL_PARAMETER);
 					extension_reader->destroy(extension_reader);
 					return NEED_MORE;
 			}
@@ -346,7 +351,6 @@ static status_t process_encrypted_extensions(private_tls_peer_t *this,
 	}
 	return NEED_MORE;
 }
-
 
 /**
  * Check if a server certificate is acceptable for the given server identity
@@ -464,7 +468,8 @@ static status_t process_certificate(private_tls_peer_t *this,
 		{
 			if (!certs->read_data16(certs, &data))
 			{
-				DBG1(DBG_TLS, "reading extension field of certificate failed", &data);
+				DBG1(DBG_TLS, "reading extension field of certificate failed",
+					 &data);
 				this->alert->add(this->alert, TLS_FATAL, TLS_DECODE_ERROR);
 				return NEED_MORE;
 			}
@@ -489,7 +494,8 @@ static status_t process_cert_verify(private_tls_peer_t *this,
 	bio_reader_t *sig;
 
 	enumerator = lib->credmgr->create_public_enumerator(lib->credmgr,
-	                                                    KEY_ANY, this->server, this->server_auth, TRUE);
+	                                                    KEY_ANY, this->server,
+	                                                    this->server_auth, TRUE);
 	while (enumerator->enumerate(enumerator, &public, &auth))
 	{
 		sig = bio_reader_create(reader->peek(reader));
@@ -622,7 +628,7 @@ static status_t process_modp_key_exchange(private_tls_peer_t *this,
  * Get the EC group for a TLS named curve
  */
 static diffie_hellman_group_t curve_to_ec_group(private_tls_peer_t *this,
-                                                tls_named_group_t curve)
+												tls_named_group_t curve)
 {
 	diffie_hellman_group_t group;
 	tls_named_group_t current;
@@ -679,7 +685,7 @@ static status_t process_ec_key_exchange(private_tls_peer_t *this,
 	if (!group)
 	{
 		DBG1(DBG_TLS, "ECDH curve %N not supported",
-		     tls_named_group_names, curve);
+			 tls_named_group_names, curve);
 		this->alert->add(this->alert, TLS_FATAL, TLS_HANDSHAKE_FAILURE);
 		return NEED_MORE;
 	}
@@ -861,15 +867,16 @@ static status_t process_finished(private_tls_peer_t *this, bio_reader_t *reader)
 			this->alert->add(this->alert, TLS_FATAL, TLS_DECODE_ERROR);
 			return NEED_MORE;
 		}
-		if (!this->crypto->calculate_finished(this->crypto, "server finished", buf))
+		if (!this->crypto->calculate_finished(this->crypto, "server finished",
+											  buf))
 		{
-			DBG1(DBG_TLS, "calculating server finished for legacy TLS failed");
+			DBG1(DBG_TLS, "calculating server finished failed");
 			this->alert->add(this->alert, TLS_FATAL, TLS_INTERNAL_ERROR);
 			return NEED_MORE;
 		}
 		if (!chunk_equals_const(received, chunk_from_thing(buf)))
 		{
-			DBG1(DBG_TLS, "received server finished for legacy TLS invalid");
+			DBG1(DBG_TLS, "received server finished invalid");
 			this->alert->add(this->alert, TLS_FATAL, TLS_DECRYPT_ERROR);
 			return NEED_MORE;
 		}
@@ -897,7 +904,6 @@ static status_t process_finished(private_tls_peer_t *this, bio_reader_t *reader)
 			return NEED_MORE;
 		}
 	}
-
 	this->state = STATE_FINISHED_RECEIVED;
 	this->crypto->append_handshake(this->crypto, TLS_FINISHED, received);
 
@@ -908,7 +914,7 @@ static status_t process_finished(private_tls_peer_t *this, bio_reader_t *reader)
  * Process New Session Ticket message
  */
 static status_t process_new_session_ticket(private_tls_peer_t *this,
-											bio_reader_t *reader)
+										   bio_reader_t *reader)
 {
 	uint32_t ticket_lifetime, ticket_age_add;
 	chunk_t ticket_nonce, ticket, extensions;
@@ -1041,7 +1047,6 @@ METHOD(tls_handshake_t, process, status_t,
 				return NEED_MORE;
 		}
 	}
-
 	DBG1(DBG_TLS, "TLS %N expected, but received %N",
 		 tls_handshake_type_names, expected, tls_handshake_type_names, type);
 	this->alert->add(this->alert, TLS_FATAL, TLS_UNEXPECTED_MESSAGE);
@@ -1078,7 +1083,7 @@ static status_t send_client_hello(private_tls_peer_t *this,
 	rng->destroy(rng);
 
 	/* Client Key Generation */
-    this->dh = lib->crypto->create_dh(lib->crypto, CURVE_25519);
+	this->dh = lib->crypto->create_dh(lib->crypto, CURVE_25519);
 
 	/* TLS version_max in Handshake Protocol */
 	version_max = this->tls->get_version_max(this->tls);
@@ -1182,9 +1187,8 @@ static status_t send_client_hello(private_tls_peer_t *this,
 	extensions->write_uint16(extensions, TLS_EXT_SIGNATURE_ALGORITHMS);
 	this->crypto->get_signature_algorithms(this->crypto, extensions);
 
-
 	DBG2(DBG_TLS, "sending extension: %N",
-	     tls_extension_names, TLS_EXT_KEY_SHARE);
+		 tls_extension_names, TLS_EXT_KEY_SHARE);
 	if (!this->dh->get_my_public_value(this->dh, &pub))
 	{
 		this->alert->add(this->alert, TLS_FATAL, TLS_INTERNAL_ERROR);
@@ -1463,7 +1467,7 @@ static status_t send_finished(private_tls_peer_t *this,
 
 		if (!this->crypto->calculate_finished(this->crypto, "client finished", buf))
 		{
-			DBG1(DBG_TLS, "calculating client finished data for legacy TLS failed");
+			DBG1(DBG_TLS, "calculating client finished data failed");
 			this->alert->add(this->alert, TLS_FATAL, TLS_INTERNAL_ERROR);
 			return NEED_MORE;
 		}
@@ -1534,7 +1538,6 @@ METHOD(tls_handshake_t, build, status_t,
 				* expect the same message */
 				return send_finished(this, type, writer);
 			case STATE_FINISHED_SENT:
-				DBG2(DBG_TLS, "now in STATE_FINISHED_SENT (build)");
 				this->crypto->derive_app_secret(this->crypto);
 				this->crypto->change_cipher(this->crypto, TRUE);
 				this->crypto->change_cipher(this->crypto, FALSE);

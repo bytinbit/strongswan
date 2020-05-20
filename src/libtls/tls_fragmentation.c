@@ -226,7 +226,6 @@ static status_t process_application(private_tls_fragmentation_t *this,
 			 "but handshake not finished");
 		return FAILED;
 	}
-
 	while (reader->remaining(reader))
 	{
 		status_t status;
@@ -358,8 +357,8 @@ static status_t build_handshake(private_tls_fragmentation_t *this)
 				msg->write_data24(msg, hs->get_buf(hs));
 				DBG2(DBG_TLS, "sending TLS %N handshake (%u bytes)",
 					 tls_handshake_type_names, type, hs->get_buf(hs).len);
-				if (!this->handshake->cipherspec_changed(this->handshake, FALSE) &&
-					type != TLS_FINISHED)
+				if (type != TLS_FINISHED &&
+					!this->handshake->cipherspec_changed(this->handshake, FALSE))
 				{
 					hs->destroy(hs);
 					continue;

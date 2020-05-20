@@ -65,7 +65,7 @@ ENUM_NEXT(tls_alert_desc_names, TLS_INTERNAL_ERROR, TLS_INTERNAL_ERROR,
 );
 ENUM_NEXT(tls_alert_desc_names, TLS_INAPPROPRIATE_FALLBACK,
 		TLS_INAPPROPRIATE_FALLBACK, TLS_INTERNAL_ERROR,
-		"inappropriate fallback",
+	"inappropriate fallback",
 );
 ENUM_NEXT(tls_alert_desc_names, TLS_USER_CANCELED, TLS_USER_CANCELED,
 		TLS_INAPPROPRIATE_FALLBACK,
@@ -88,7 +88,7 @@ ENUM_NEXT(tls_alert_desc_names, TLS_MISSING_EXTENSION, TLS_CERTIFICATE_REQUIRED,
 );
 ENUM_NEXT(tls_alert_desc_names, TLS_NO_APPLICATION_PROTOCOL,
 		TLS_NO_APPLICATION_PROTOCOL, TLS_CERTIFICATE_REQUIRED,
-		"no application protocol"
+	"no application protocol"
 );
 ENUM_END(tls_alert_desc_names, TLS_NO_APPLICATION_PROTOCOL);
 
