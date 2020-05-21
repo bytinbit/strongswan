@@ -13,6 +13,7 @@
  * for more details.
  */
 
+TEST_SUITE(hkdf_suite_create)
 TEST_SUITE(socket_suite_create)
 TEST_SUITE(suites_suite_create)
 TEST_SUITE(hkdf_suite_create)
