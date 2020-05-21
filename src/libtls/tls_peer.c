@@ -209,12 +209,6 @@ static status_t process_server_hello(private_tls_peer_t *this,
 				{
 					DBG2(DBG_TLS, "no valid key share found in extension");
 				}
-
-				if (key_type != CURVE_25519 &&
-					!this->dh->set_other_public_value(this->dh, ext_key_share))
-				{
-					DBG2(DBG_TLS, "server key share unable to save");
-				}
 				break;
 			default:
 				continue;
@@ -247,6 +241,8 @@ static status_t process_server_hello(private_tls_peer_t *this,
 				this->resume = TRUE;
 			}
 		}
+		DESTROY_IF(this->dh);
+		this->dh = NULL;
 	}
 	if (!suite)
 	{
@@ -267,6 +263,12 @@ static status_t process_server_hello(private_tls_peer_t *this,
 	if (this->tls->get_version_max(this->tls) == TLS_1_3)
 	{
 		chunk_t shared_secret;
+
+		if (key_type != CURVE_25519 &&
+			!this->dh->set_other_public_value(this->dh, ext_key_share))
+		{
+			DBG2(DBG_TLS, "server key share unable to save");
+		}
 		if (!this->dh->get_shared_secret(this->dh, &shared_secret))
 		{
 			DBG2(DBG_TLS, "No shared secret key found");
@@ -604,7 +606,6 @@ static status_t process_modp_key_exchange(private_tls_peer_t *this,
 	public->destroy(public);
 	free(chunk.ptr);
 
-	DESTROY_IF(this->dh);
 	this->dh = lib->crypto->create_dh(lib->crypto, MODP_CUSTOM,
 									  generator, prime);
 	if (!this->dh)
@@ -712,7 +713,6 @@ static status_t process_ec_key_exchange(private_tls_peer_t *this,
 	public->destroy(public);
 	free(chunk.ptr);
 
-	DESTROY_IF(this->dh);
 	this->dh = lib->crypto->create_dh(lib->crypto, group);
 	if (!this->dh)
 	{
@@ -1133,42 +1133,34 @@ static status_t send_client_hello(private_tls_peer_t *this,
 		names->destroy(names);
 	}
 
-	if (version_max < TLS_1_3)
+	DBG2(DBG_TLS, "sending extension: Supported Groups");
+	/* add supported elliptic curves, if any */
+	enumerator = this->crypto->create_ec_enumerator(this->crypto);
+	while (enumerator->enumerate(enumerator, NULL, &curve))
 	{
-		DBG2(DBG_TLS, "sending extension: Supported Groups for legacy TLS");
-		/* add supported elliptic curves, if any */
-		enumerator = this->crypto->create_ec_enumerator(this->crypto);
-		while (enumerator->enumerate(enumerator, NULL, &curve))
+		if (!curves)
 		{
-			if (!curves)
-			{
-				extensions->write_uint16(extensions, TLS_EXT_SUPPORTED_GROUPS);
-				curves = bio_writer_create(16);
-			}
-			curves->write_uint16(curves, curve);
+			extensions->write_uint16(extensions, TLS_EXT_SUPPORTED_GROUPS);
+			curves = bio_writer_create(16);
 		}
-		enumerator->destroy(enumerator);
-		if (curves)
-		{
-			curves->wrap16(curves);
-			extensions->write_data16(extensions, curves->get_buf(curves));
-			curves->destroy(curves);
-
-			/* if we support curves, add point format extension */
-			extensions->write_uint16(extensions, TLS_EXT_EC_POINT_FORMATS);
-			extensions->write_uint16(extensions, 2);
-			extensions->write_uint8(extensions, 1);
-			extensions->write_uint8(extensions, TLS_EC_POINT_UNCOMPRESSED);
-		}
+		curves->write_uint16(curves, curve);
 	}
-	else  /* using TLS 1.3 */
+	enumerator->destroy(enumerator);
+	if (curves)
 	{
-		DBG2(DBG_TLS, "sending extension: %N",
-			tls_extension_names, TLS_EXT_SUPPORTED_GROUPS);
-		extensions->write_uint16(extensions, TLS_EXT_SUPPORTED_GROUPS);
-		extensions->write_uint16(extensions, 4);
+		if (version_max == TLS_1_3)
+		{
+			curves->write_uint16(curves, TLS_CURVE25519);
+		}
+		curves->wrap16(curves);
+		extensions->write_data16(extensions, curves->get_buf(curves));
+		curves->destroy(curves);
+
+		/* if we support curves, add point format extension */
+		extensions->write_uint16(extensions, TLS_EXT_EC_POINT_FORMATS);
 		extensions->write_uint16(extensions, 2);
-		extensions->write_uint16(extensions, TLS_CURVE25519);
+		extensions->write_uint8(extensions, 1);
+		extensions->write_uint8(extensions, TLS_EC_POINT_UNCOMPRESSED);
 	}
 
 	DBG2(DBG_TLS, "sending extension: %N",
@@ -1543,7 +1535,6 @@ METHOD(tls_handshake_t, build, status_t,
 				this->crypto->change_cipher(this->crypto, TRUE);
 				this->crypto->change_cipher(this->crypto, FALSE);
 				this->state = STATE_FINISHED_SENT_KEY_SWITCHED;
-				//return NEED_MORE;
 				return SUCCESS;
 			case STATE_FINISHED_SENT_KEY_SWITCHED:
 				return SUCCESS;
