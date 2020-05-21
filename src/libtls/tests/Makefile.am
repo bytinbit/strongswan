@@ -5,6 +5,7 @@ check_PROGRAMS = $(TESTS)
 tls_tests_SOURCES = \
 	suites/test_socket.c \
 	suites/test_suites.c \
+	suites/test_hkdf.c \
 	tls_tests.h tls_tests.c
 
 tls_tests_CFLAGS = \
